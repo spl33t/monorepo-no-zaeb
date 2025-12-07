@@ -1,0 +1,22 @@
+{
+  "name": "monorepo-no-zaeb",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install",
+    "create:app": "node tools/create-app.js",
+    "create:package": "node tools/create-package.js"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "dotenv": "^16.3.1",
+    "esbuild": "^0.19.0",
+    "nodemon": "^3.0.0",
+    "rimraf": "^5.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
