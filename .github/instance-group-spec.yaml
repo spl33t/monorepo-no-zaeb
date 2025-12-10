@@ -18,8 +18,10 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      # Публичный IP для SSH доступа (опционально)
-      # Раскомментируйте, если нужен публичный доступ:
+      # primary_v4_address_spec обязателен (даже если пустой)
+      # Если нужен публичный IP для SSH, раскомментируйте one_to_one_nat_spec:
+      primary_v4_address_spec: {}
+      # Публичный IP для SSH доступа (опционально):
       # primary_v4_address_spec:
       #   one_to_one_nat_spec:
       #     ip_version: IPV4
