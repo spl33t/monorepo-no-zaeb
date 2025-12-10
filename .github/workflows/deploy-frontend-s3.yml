@@ -1,0 +1,128 @@
+name: Deploy Frontend to Object Storage
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Frontend application name from apps/ directory (e.g., frontend)'
+        required: true
+        type: string
+      bucket_name:
+        description: 'Object Storage bucket name'
+        required: false
+        default: 'mv-dating'
+        type: string
+      build_command:
+        description: 'Build command (default: npm run build)'
+        required: false
+        default: 'npm run build'
+        type: string
+      build_output:
+        description: 'Build output directory (default: dist)'
+        required: false
+        default: 'dist'
+        type: string
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate application exists
+        run: |
+          if [ ! -d "apps/${{ github.event.inputs.app_name }}" ]; then
+            echo "❌ Error: Application 'apps/${{ github.event.inputs.app_name }}' not found!"
+            echo ""
+            echo "Available applications:"
+            ls -1 apps/ 2>/dev/null || echo "No apps directory found"
+            exit 1
+          fi
+          
+          echo "✅ Application found: ${{ github.event.inputs.app_name }}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd apps/${{ github.event.inputs.app_name }}
+          npm ci
+
+      - name: Build frontend
+        run: |
+          cd apps/${{ github.event.inputs.app_name }}
+          ${{ github.event.inputs.build_command }}
+        env:
+          NODE_ENV: production
+
+      - name: Validate build output
+        run: |
+          BUILD_OUTPUT="${{ github.event.inputs.build_output }}"
+          APP_DIR="apps/${{ github.event.inputs.app_name }}"
+          
+          if [ ! -d "$APP_DIR/$BUILD_OUTPUT" ]; then
+            echo "❌ Error: Build output directory '$BUILD_OUTPUT' not found in '$APP_DIR'"
+            echo ""
+            echo "Available directories:"
+            ls -la "$APP_DIR" || echo "Directory not found"
+            exit 1
+          fi
+          
+          echo "✅ Build output found: $APP_DIR/$BUILD_OUTPUT"
+
+      - name: Setup Yandex Cloud CLI
+        uses: yc-actions/yc-setup-cli@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Configure static website hosting
+        run: |
+          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
+          
+          echo "⚙️ Configuring static website hosting for bucket: $BUCKET_NAME"
+          # Настраиваем статический хостинг для SPA (все маршруты возвращают index.html)
+          yc storage bucket update \
+            --name "$BUCKET_NAME" \
+            --website-settings-from-file <(echo '{"index":"index.html","error":"index.html"}') || {
+              echo "⚠️  Failed to configure website hosting (might already be configured or need manual setup)"
+            }
+
+      - name: Upload files to Object Storage
+        uses: yc-actions/yc-obj-storage-upload@v3
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          bucket: ${{ github.event.inputs.bucket_name || 'mv-dating' }}
+          root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
+          include: |
+            **/*
+
+      - name: Set bucket URL
+        id: bucket_url
+        run: |
+          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
+          BUCKET_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
+          
+          echo "url=$BUCKET_URL" >> $GITHUB_OUTPUT
+          echo "🌐 Bucket URL: $BUCKET_URL"
+
+      - name: Deployment info
+        run: |
+          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Frontend deployment completed!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Application: ${{ github.event.inputs.app_name }}"
+          echo "Bucket: $BUCKET_NAME"
+          echo "Build output: ${{ github.event.inputs.build_output }}"
+          echo "URL: ${{ steps.bucket_url.outputs.url }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "💡 Tip: Configure CDN for better performance:"
+          echo "   https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/cdn/resource"
+
