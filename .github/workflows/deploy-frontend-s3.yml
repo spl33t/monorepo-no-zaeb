@@ -76,9 +76,9 @@ jobs:
           echo "✅ Build output found: $APP_DIR/$BUILD_OUTPUT"
 
       - name: Setup Yandex Cloud CLI
-        uses: yc-actions/yc-setup-cli@v1
+        uses: okar1/yc-cli-install@master
         with:
-          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          SA_KEY: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
 
       - name: Configure static website hosting
         run: |
