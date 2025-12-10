@@ -40,21 +40,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install Yandex Cloud CLI
-        run: |
-          curl -s https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          yc --version
-
-      - name: Authenticate Yandex Cloud
-        run: |
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          echo ${{ secrets.YC_OAUTH_TOKEN }} | yc auth login --token -
-
-      - name: Configure Docker for Yandex Registry
-        run: |
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          yc container registry configure-docker
+      - name: Login to Yandex Cloud Container Registry
+        uses: yc-actions/yc-cr-login@v3
+        with:
+          yc-sa-id: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
 
       - name: Build Docker image
         run: |
@@ -62,17 +51,15 @@ jobs:
 
       - name: Tag Docker image
         run: |
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          
           APP_NAME="${{ github.event.inputs.app_name }}"
           
           if [ -z "${{ github.event.inputs.image_tag }}" ]; then
             # Используем SHA коммита (первые 8 символов)
             COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:$COMMIT_SHA"
+            IMAGE_TAG="cr.yandex/${{ secrets.YC_REGISTRY }}/$APP_NAME:$COMMIT_SHA"
           else
             # Используем указанный тег
-            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:${{ github.event.inputs.image_tag }}"
+            IMAGE_TAG="cr.yandex/${{ secrets.YC_REGISTRY }}/$APP_NAME:${{ github.event.inputs.image_tag }}"
           fi
           
           docker tag $APP_NAME:latest $IMAGE_TAG
