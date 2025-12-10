@@ -7,7 +7,7 @@ instance_template:
   resources_spec:
     cores: 2
     memory: 4294967296
-  boot_disk:
+  boot_disk_spec:
     mode: READ_WRITE
     disk_spec:
       image_id: fd8kdq6d0pfr0it8v133
