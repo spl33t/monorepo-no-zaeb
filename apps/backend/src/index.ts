@@ -23,6 +23,6 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ message: 'Hello from backend!', port: PORT }));
 });
 
-server.listen(PORT, () => {
+server.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`✅ Server is running on port ${PORT}`);
 });
