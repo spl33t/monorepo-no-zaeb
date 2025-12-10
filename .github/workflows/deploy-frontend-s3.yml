@@ -47,11 +47,12 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: |
-          cd apps/${{ github.event.inputs.app_name }}
-          npm ci
+          # Устанавливаем зависимости из корня проекта (для monorepo)
+          npm ci || npm install
 
       - name: Build frontend
         run: |
