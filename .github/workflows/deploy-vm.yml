@@ -41,6 +41,19 @@ jobs:
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "📦 Deploying image: $IMAGE_FULL"
 
+      - name: Prepare user-data with SSH key
+        run: |
+          # Создаем временный user-data с SSH ключом, если он указан
+          if [ -n "${{ secrets.SSH_PUBLIC_KEY }}" ]; then
+            # Создаем копию user-data.yaml с подстановкой SSH ключа
+            sed "s|SSH_PUBLIC_KEY_PLACEHOLDER|${{ secrets.SSH_PUBLIC_KEY }}|g" .github/user-data.yaml > .github/user-data-temp.yaml
+            echo "✅ SSH key added to user-data"
+          else
+            # Если SSH ключ не указан, используем оригинальный файл
+            cp .github/user-data.yaml .github/user-data-temp.yaml
+            echo "⚠️ SSH_PUBLIC_KEY not found in secrets, using original user-data.yaml"
+          fi
+
       - name: Deploy to VM
         uses: yc-actions/yc-coi-deploy@v2
         env:
@@ -56,7 +69,7 @@ jobs:
           vm-memory: 4Gb
           vm-core-fraction: 100
           vm-subnet-id: ${{ secrets.YC_SUBNET_ID }}
-          user-data-path: './.github/user-data.yaml'
+          user-data-path: './.github/user-data-temp.yaml'
           docker-compose-path: './.github/docker-compose.yaml'
 
       - name: Deployment info
