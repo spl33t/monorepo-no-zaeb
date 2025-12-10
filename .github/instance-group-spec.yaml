@@ -18,12 +18,6 @@ instance_template:
       subnet_ids:
         - {{ secrets.YC_SUBNET_ID }}
       primary_v4_address_spec: {}
-  container_spec:
-    image: cr.yandex/{{ env.CR_REGISTRY }}/{{ env.CR_REPOSITORY }}:{{ env.IMAGE_TAG }}
-    # command можно не указывать, т.к. в Dockerfile уже есть CMD ["node", "dist/index.js"]
-    environment:
-      PORT: "3333"
-      NODE_ENV: production
   labels:
     app: {{ env.APP_NAME }}
 scale_policy:
