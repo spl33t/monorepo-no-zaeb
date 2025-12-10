@@ -12,3 +12,46 @@ users:
     ssh_authorized_keys:
       - SSH_PUBLIC_KEY_PLACEHOLDER
 
+# Настройка автозапуска docker-compose при загрузке системы
+# Container Optimized Image должен автоматически обрабатывать docker-compose из метаданных,
+# но на практике это не всегда работает, поэтому настраиваем вручную
+write_files:
+  - path: /etc/systemd/system/docker-compose.service
+    permissions: '0644'
+    owner: root:root
+    content: |
+      [Unit]
+      Description=Docker Compose Service
+      Requires=docker.service
+      After=docker.service
+      
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/etc/docker-compose
+      ExecStartPre=/bin/bash -c 'mkdir -p /etc/docker-compose'
+      # Yandex Cloud использует тот же формат metadata server, что и Google Cloud (для совместимости)
+      # IP 169.254.169.254 - стандартный адрес metadata server в облачных провайдерах
+      # Заголовок "Metadata-Flavor: Google" - стандартный формат, который использует Yandex Cloud
+      ExecStartPre=/bin/bash -c 'curl -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/attributes/docker-compose > /etc/docker-compose/docker-compose.yaml || exit 0'
+      ExecStart=/usr/bin/docker-compose up -d
+      ExecStop=/usr/bin/docker-compose down
+      Restart=on-failure
+      RestartSec=10
+      
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  # Убеждаемся, что docker запущен
+  - systemctl enable docker || true
+  - systemctl start docker || true
+  # Создаем директорию для docker-compose
+  - mkdir -p /etc/docker-compose
+  # Копируем docker-compose из метаданных Yandex Cloud
+  # Yandex Cloud использует тот же формат metadata server, что и Google Cloud (для совместимости)
+  - curl -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/attributes/docker-compose > /etc/docker-compose/docker-compose.yaml || true
+  # Включаем и запускаем сервис docker-compose
+  - systemctl enable docker-compose || true
+  - systemctl start docker-compose || true
+
