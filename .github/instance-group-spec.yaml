@@ -32,12 +32,14 @@ deploy_policy:
   max_deleting: 1
   max_creating: 1
   startup_duration: 60s
-health_check_spec:
-  interval: 10s
-  timeout: 5s
-  unhealthy_threshold: 3
-  healthy_threshold: 2
-  http_options:
-    port: 3333
-    path: /health
+health_checks_spec:
+  health_check_specs:
+    - interval: 10s
+      timeout: 5s
+      unhealthy_threshold: 3
+      healthy_threshold: 2
+      http_options:
+        port: 3333
+        path: /health
+  max_checking_health_duration: 60s
 
