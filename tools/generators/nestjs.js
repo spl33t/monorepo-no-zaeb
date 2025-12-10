@@ -116,9 +116,10 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  // Health check endpoint для Instance Group
   @Get('health')
   getHealth() {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { status: 'ok' };
   }
 }
 `;
