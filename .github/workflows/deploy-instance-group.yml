@@ -52,6 +52,7 @@ jobs:
           folder-id: ${{ secrets.YC_FOLDER_ID }}
           ig-spec-path: './.github/instance-group-spec.yaml'
           user-data-path: './.github/user-data.yaml'
+          docker-compose-path: './.github/docker-compose.yaml'
 
       - name: Deployment info
         run: |

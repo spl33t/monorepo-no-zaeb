@@ -1,0 +1,6 @@
+# Docker Compose для Container Optimized Image
+# Этот файл можно оставить пустым, если конфигурация контейнеров указана в instance-group-spec.yaml
+# Подробнее: https://cloud.yandex.ru/docs/compute/concepts/coi/docker-compose
+
+version: '3'
+
