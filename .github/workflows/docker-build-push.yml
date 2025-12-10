@@ -40,21 +40,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install Yandex Cloud CLI
+      - name: Install Yandex Cloud CLI and get IAM token
+        id: yc-auth
         run: |
-          curl -s https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          yc --version
-
-      - name: Authenticate Yandex Cloud
-        run: |
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
+          curl -s https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s
+          echo "$HOME/.yandex-cloud/bin" >> $GITHUB_PATH
+          # Используем полный путь для проверки
+          "$HOME/.yandex-cloud/bin/yc" --version
+          # Аутентифицируемся через OAuth токен
           echo ${{ secrets.YC_OAUTH_TOKEN }} | yc auth login --token -
+          # Получаем IAM токен для использования в action
+          IAM_TOKEN=$(yc iam create-token)
+          echo "iam-token=$IAM_TOKEN" >> $GITHUB_OUTPUT
 
-      - name: Configure Docker for Yandex Registry
-        run: |
-          export PATH="$HOME/.yandex-cloud/bin:$PATH"
-          yc container registry configure-docker
+      - name: Login to Yandex Cloud Container Registry
+        uses: yc-actions/yc-cr-login@v3
+        with:
+          yc-iam-token: ${{ steps.yc-auth.outputs.iam-token }}
 
       - name: Build Docker image
         run: |
