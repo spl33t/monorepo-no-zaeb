@@ -1,0 +1,18 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
+    "clean": "rimraf dist",
+    "dev": "nodemon --exec ts-node --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "--------------------------------Docker commands--------------------------------": "",
+    "docker:build": "node ../../tools/docker-helper.js build Dockerfile backend",
+    "docker:up": "node ../../tools/docker-helper.js up Dockerfile backend 3333 -d",
+    "docker:up:attach": "node ../../tools/docker-helper.js up Dockerfile backend 3333",
+    "docker:attach": "docker attach backend",
+    "docker:down": "node ../../tools/docker-helper.js down backend",
+    "docker:logs": "docker logs -f backend"
+  }
+}

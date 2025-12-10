@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       image_tag:
-        description: 'Image tag (default: commit SHA, first 8 chars)'
+        description: 'Image tag (leave empty to use commit SHA, first 8 chars)'
         required: false
         default: ''
         type: string
@@ -68,7 +68,8 @@ jobs:
           
           if [ -z "${{ github.event.inputs.image_tag }}" ]; then
             # Используем SHA коммита (первые 8 символов)
-            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:${GITHUB_SHA::8}"
+            COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:$COMMIT_SHA"
           else
             # Используем указанный тег
             IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:${{ github.event.inputs.image_tag }}"
