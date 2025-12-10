@@ -51,6 +51,7 @@ jobs:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ secrets.YC_FOLDER_ID }}
           ig-spec-path: './.github/instance-group-spec.yaml'
+          user-data-path: './.github/user-data.yaml'
 
       - name: Deployment info
         run: |

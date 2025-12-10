@@ -1,0 +1,4 @@
+# User-data для Container Optimized Image
+# Этот файл можно оставить пустым, если не требуется дополнительная настройка
+# Подробнее: https://cloud.yandex.ru/docs/compute/concepts/vm-metadata
+
