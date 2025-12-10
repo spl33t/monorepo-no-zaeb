@@ -1,15 +1,27 @@
 # Docker Compose для Container Optimized Image
 # Подробнее: https://cloud.yandex.ru/docs/compute/concepts/coi/docker-compose
+# 
+# В Container Optimized Image порты автоматически пробрасываются из EXPOSE в Dockerfile
+# Явное указание ports может быть не нужно, но оставляем для совместимости
 
 version: '3'
 
 services:
   app:
     image: cr.yandex/{{ env.CR_REGISTRY }}/{{ env.CR_REPOSITORY }}:{{ env.IMAGE_TAG }}
+    # Порт пробрасывается автоматически из EXPOSE в Dockerfile
+    # Но можно указать явно для ясности
     ports:
       - "3333:3333"
     environment:
       PORT: "3333"
+      HOST: "0.0.0.0"
       NODE_ENV: production
     restart: always
+    # Логирование для отладки
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
