@@ -7,61 +7,12 @@
 #
 # ВАЖНО: Для Yandex Cloud user-data должен быть в формате cloud-init YAML
 # SSH ключ подставляется автоматически из GitHub Secrets (SSH_PUBLIC_KEY)
+#
+# ПРИМЕЧАНИЕ: Container Optimized Image автоматически обрабатывает docker-compose
+# из метаданных через daemon yc-container-daemon. Не нужно настраивать systemd unit вручную.
+# Action yc-coi-deploy передает docker-compose.yaml в метаданные VM с ключом 'docker-compose'.
 users:
   - name: yc-user
     ssh_authorized_keys:
       - SSH_PUBLIC_KEY_PLACEHOLDER
-
-# Настройка автозапуска docker-compose при загрузке системы
-# Container Optimized Image должен автоматически обрабатывать docker-compose из метаданных,
-# но на практике это не всегда работает, поэтому настраиваем вручную
-write_files:
-  - path: /etc/systemd/system/docker-compose.service
-    permissions: '0644'
-    owner: root:root
-    content: |
-      [Unit]
-      Description=Docker Compose Service
-      Requires=docker.service
-      After=docker.service network-online.target
-      Wants=network-online.target
-      
-      [Service]
-      Type=oneshot
-      RemainAfterExit=yes
-      WorkingDirectory=/etc/docker-compose
-      # Создаем директорию и копируем docker-compose из метаданных
-      # Yandex Cloud использует тот же формат metadata server, что и Google Cloud (для совместимости)
-      ExecStartPre=/bin/bash -c 'mkdir -p /etc/docker-compose'
-      ExecStartPre=/bin/bash -c 'curl -f -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/attributes/docker-compose > /etc/docker-compose/docker-compose.yaml 2>/dev/null || echo "Warning: Failed to get docker-compose from metadata"'
-      # Запускаем docker-compose (используем docker compose plugin, если доступен)
-      ExecStart=/bin/bash -c 'if command -v docker &> /dev/null; then cd /etc/docker-compose && (docker compose up -d || docker-compose up -d) || true; fi'
-      ExecStop=/bin/bash -c 'cd /etc/docker-compose && (docker compose down || docker-compose down) || true'
-      Restart=on-failure
-      RestartSec=10
-      
-      [Install]
-      WantedBy=multi-user.target
-
-runcmd:
-  # Убеждаемся, что docker запущен
-  - systemctl enable docker || true
-  - systemctl start docker || true
-  # Ждем, пока docker полностью запустится
-  - sleep 5
-  # Создаем директорию для docker-compose
-  - mkdir -p /etc/docker-compose
-  # Копируем docker-compose из метаданных Yandex Cloud
-  # Yandex Cloud использует тот же формат metadata server, что и Google Cloud (для совместимости)
-  - curl -f -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/attributes/docker-compose > /etc/docker-compose/docker-compose.yaml 2>/dev/null || echo "Warning: Failed to get docker-compose from metadata"
-  # Проверяем, что файл создан
-  - test -f /etc/docker-compose/docker-compose.yaml && echo "✅ docker-compose.yaml created" || echo "❌ docker-compose.yaml not found"
-  # Перезагружаем systemd для применения нового unit
-  - systemctl daemon-reload
-  # Включаем автозапуск сервиса docker-compose
-  - systemctl enable docker-compose || true
-  # Запускаем сервис docker-compose
-  - systemctl start docker-compose || true
-  # Проверяем статус
-  - systemctl status docker-compose --no-pager || true
 
