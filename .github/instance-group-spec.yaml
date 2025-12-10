@@ -55,7 +55,7 @@ health_checks_spec:
     # TCP health check (проверяет, что порт открыт)
     # Проще и надежнее, чем HTTP - не требует работающего endpoint
     - interval: 10s
-      timeout: 10s
+      timeout: 5s
       unhealthy_threshold: 5
       healthy_threshold: 2
       tcp_options:
