@@ -1,0 +1,71 @@
+name: Deploy to VM
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application name (e.g., backend)'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag (leave empty to use commit SHA, first 8 chars)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image tag
+        id: image
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          
+          if [ -z "${{ github.event.inputs.image_tag }}" ]; then
+            # Используем SHA коммита (первые 8 символов)
+            COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+            IMAGE_TAG="$COMMIT_SHA"
+          else
+            # Используем указанный тег
+            IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+          fi
+          
+          IMAGE_FULL="cr.yandex/${{ secrets.YC_REGISTRY }}/$APP_NAME:$IMAGE_TAG"
+          
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "IMAGE_FULL=$IMAGE_FULL" >> $GITHUB_ENV
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "📦 Deploying image: $IMAGE_FULL"
+
+      - name: Deploy to VM
+        uses: yc-actions/yc-coi-deploy@v2
+        env:
+          CR_REGISTRY: ${{ secrets.YC_REGISTRY }}
+          CR_REPOSITORY: ${{ env.APP_NAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ secrets.YC_FOLDER_ID }}
+          vm-name: ${{ env.APP_NAME }}-vm
+          vm-service-account-id: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          vm-cores: 2
+          vm-memory: 4Gb
+          vm-core-fraction: 100
+          vm-subnet-id: ${{ secrets.YC_SUBNET_ID }}
+          user-data-path: './.github/user-data.yaml'
+          docker-compose-path: './.github/docker-compose.yaml'
+
+      - name: Deployment info
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Deployment completed!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Application: ${{ env.APP_NAME }}"
+          echo "VM Name: ${{ env.APP_NAME }}-vm"
+          echo "Image: ${{ env.IMAGE_FULL }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+

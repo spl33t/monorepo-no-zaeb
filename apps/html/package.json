@@ -1,0 +1,21 @@
+{
+  "name": "html",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "clean": "rimraf dist",
+    "--------------------------------Docker commands--------------------------------": "",
+    "docker:build": "node ../../tools/docker-helper.js build Dockerfile html",
+    "docker:up": "node ../../tools/docker-helper.js up Dockerfile html 80 -d",
+    "docker:up:attach": "node ../../tools/docker-helper.js up Dockerfile html 80",
+    "docker:attach": "docker attach html",
+    "docker:down": "node ../../tools/docker-helper.js down html",
+    "docker:logs": "docker logs -f html"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
