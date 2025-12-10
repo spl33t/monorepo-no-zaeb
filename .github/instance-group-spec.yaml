@@ -9,7 +9,8 @@ instance_template:
     memory: 4294967296
   boot_disk_spec:
     mode: READ_WRITE
-    disk_spec:
+      disk_spec:
+      # Container Optimized Image (COI) - стандартный пользователь: yc-user
       image_id: fd846fg1abf9s6degc97
       type_id: network-hdd
       size: 21474836480
@@ -17,7 +18,19 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      primary_v4_address_spec: {}
+      primary_v4_address_spec:
+        # Публичный IP для SSH доступа (опционально)
+        # Раскомментируйте, если нужен публичный доступ:
+        # one_to_one_nat_spec:
+        #   ip_version: IPV4
+  # SSH ключи для доступа к инстансам
+  # Формат: "username:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host"
+  # Для Container Optimized Image используется пользователь yc-user
+  metadata:
+    # SSH ключ для доступа к инстансам
+    # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
+    # Убедитесь, что добавили SSH_PUBLIC_KEY в GitHub Secrets
+    ssh-keys: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
   labels:
     app: {{ env.APP_NAME }}
 scale_policy:
@@ -34,23 +47,22 @@ deploy_policy:
   startup_duration: 120s
 health_checks_spec:
   health_check_specs:
-    # TCP health check (просто проверяет, что порт открыт)
-    # Более надежный, чем HTTP - не требует endpoint /health
+    # HTTP health check (проверяет endpoint /health)
     - interval: 10s
       timeout: 5s
       unhealthy_threshold: 5
       healthy_threshold: 2
-      tcp_options:
+      http_options:
         port: 3333
-    # Альтернативный HTTP health check (проверяет endpoint /health)
-    # Раскомментируйте, если хотите использовать HTTP вместо TCP:
+        path: /health
+    # Альтернативный TCP health check (просто проверяет, что порт открыт)
+    # Раскомментируйте, если HTTP health check не работает:
     # - interval: 10s
     #   timeout: 5s
     #   unhealthy_threshold: 5
     #   healthy_threshold: 2
-    #   http_options:
+    #   tcp_options:
     #     port: 3333
-    #     path: /health
   max_checking_health_duration: 120s
 
 # Autohealing (автоматическое восстановление)
