@@ -74,23 +74,6 @@ jobs:
           
           echo "✅ Build output found: $APP_DIR/$BUILD_OUTPUT"
 
-      - name: Setup Yandex Cloud CLI
-        uses: okar1/yc-cli-install@master
-        with:
-          SA_KEY: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
-
-      - name: Configure static website hosting
-        run: |
-          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
-          
-          echo "⚙️ Configuring static website hosting for bucket: $BUCKET_NAME"
-          # Настраиваем статический хостинг для SPA (все маршруты возвращают index.html)
-          yc storage bucket update \
-            --name "$BUCKET_NAME" \
-            --website-settings-from-file <(echo '{"index":"index.html","error":"index.html"}') || {
-              echo "⚠️  Failed to configure website hosting (might already be configured or need manual setup)"
-            }
-
       - name: Upload files to Object Storage
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
