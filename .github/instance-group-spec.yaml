@@ -4,15 +4,15 @@ service_account_id: {{ secrets.YC_SERVICE_ACCOUNT_ID }}
 description: Instance Group for {{ env.APP_NAME }}
 instance_template:
   platform_id: standard-v2
-  resources:
+  resources_spec:
     cores: 2
-    memory: 4GB
+    memory: 4294967296
   boot_disk:
     mode: READ_WRITE
     disk_spec:
       image_id: fd8kdq6d0pfr0it8v133
       type_id: network-hdd
-      size: 20GB
+      size: 21474836480
   network_interface_specs:
     - network_id: {{ secrets.YC_NETWORK_ID }}
       subnet_ids:
