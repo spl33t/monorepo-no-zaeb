@@ -45,14 +45,40 @@ jobs:
         run: |
           # Создаем временный user-data с SSH ключом, если он указан
           if [ -n "${{ secrets.SSH_PUBLIC_KEY }}" ]; then
+            echo "🔑 SSH key found in secrets"
+            echo "Key length: $(echo -n '${{ secrets.SSH_PUBLIC_KEY }}' | wc -c) characters"
+            
+            # Экранируем специальные символы для sed
+            SSH_KEY_ESCAPED=$(echo '${{ secrets.SSH_PUBLIC_KEY }}' | sed 's/[[\.*^$()+?{|]/\\&/g')
+            
             # Создаем копию user-data.yaml с подстановкой SSH ключа
-            sed "s|SSH_PUBLIC_KEY_PLACEHOLDER|${{ secrets.SSH_PUBLIC_KEY }}|g" .github/user-data.yaml > .github/user-data-temp.yaml
-            echo "✅ SSH key added to user-data"
+            sed "s|SSH_PUBLIC_KEY_PLACEHOLDER|${SSH_KEY_ESCAPED}|g" .github/user-data.yaml > .github/user-data-temp.yaml
+            
+            # Проверяем, что подстановка прошла успешно
+            if grep -q "ssh-rsa\|ssh-ed25519\|ecdsa" .github/user-data-temp.yaml; then
+              echo "✅ SSH key successfully added to user-data"
+              echo "Preview (first 100 chars):"
+              grep "ssh-keys" .github/user-data-temp.yaml | head -c 100
+              echo ""
+            else
+              echo "❌ ERROR: SSH key was not properly substituted!"
+              echo "Original file:"
+              cat .github/user-data.yaml
+              echo "Generated file:"
+              cat .github/user-data-temp.yaml
+              exit 1
+            fi
           else
-            # Если SSH ключ не указан, используем оригинальный файл
-            cp .github/user-data.yaml .github/user-data-temp.yaml
             echo "⚠️ SSH_PUBLIC_KEY not found in secrets, using original user-data.yaml"
+            cp .github/user-data.yaml .github/user-data-temp.yaml
           fi
+
+      - name: Show user-data content (debug)
+        run: |
+          echo "📄 Final user-data content:"
+          cat .github/user-data-temp.yaml
+          echo ""
+          echo "---"
 
       - name: Deploy to VM
         uses: yc-actions/yc-coi-deploy@v2

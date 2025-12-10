@@ -9,7 +9,7 @@ instance_template:
     memory: 4294967296
   boot_disk_spec:
     mode: READ_WRITE
-      disk_spec:
+    disk_spec:
       # Container Optimized Image (COI) - стандартный пользователь: yc-user
       image_id: fd846fg1abf9s6degc97
       type_id: network-hdd
