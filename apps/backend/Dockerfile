@@ -42,8 +42,9 @@ COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
 
 WORKDIR /app/apps/backend
 
-# Set port from environment variable
+# Set port and host from environment variables
 ENV PORT=3333
+ENV HOST=0.0.0.0
 
 # Expose port
 EXPOSE 3333

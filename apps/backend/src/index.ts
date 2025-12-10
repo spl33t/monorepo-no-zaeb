@@ -32,4 +32,27 @@ const server = http.createServer((req, res) => {
 
 server.listen(Number(PORT), HOST, () => {
   console.log(`✅ Server is running on http://${HOST}:${PORT}`);
+  console.log(`📡 Health check available at: http://${HOST}:${PORT}/health`);
+});
+
+// Обработка ошибок при запуске сервера
+server.on('error', (err: NodeJS.ErrnoException) => {
+  console.error('❌ Server error:', err);
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use!`);
+  } else if (err.code === 'EACCES') {
+    console.error(`❌ Permission denied to bind to port ${PORT}!`);
+  }
+  process.exit(1);
+});
+
+// Обработка необработанных ошибок
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });

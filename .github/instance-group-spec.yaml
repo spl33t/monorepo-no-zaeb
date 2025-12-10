@@ -31,15 +31,29 @@ deploy_policy:
   max_expansion: 1
   max_deleting: 1
   max_creating: 1
-  startup_duration: 90s
+  startup_duration: 120s
 health_checks_spec:
   health_check_specs:
+    # TCP health check (просто проверяет, что порт открыт)
+    # Более надежный, чем HTTP - не требует endpoint /health
     - interval: 10s
       timeout: 5s
       unhealthy_threshold: 5
       healthy_threshold: 2
-      http_options:
+      tcp_options:
         port: 3333
-        path: /health
+    # Альтернативный HTTP health check (проверяет endpoint /health)
+    # Раскомментируйте, если хотите использовать HTTP вместо TCP:
+    # - interval: 10s
+    #   timeout: 5s
+    #   unhealthy_threshold: 5
+    #   healthy_threshold: 2
+    #   http_options:
+    #     port: 3333
+    #     path: /health
   max_checking_health_duration: 120s
 
+# Autohealing (автоматическое восстановление)
+# Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
+# Autohealing работает автоматически на основе health_checks_spec
+# Дополнительная настройка не требуется - включено по умолчанию
