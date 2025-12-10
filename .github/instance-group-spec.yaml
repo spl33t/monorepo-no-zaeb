@@ -1,6 +1,6 @@
 name: {{ env.APP_NAME }}-ig
-folder_id: {{ secrets.YC_FOLDER_ID }}
-service_account_id: {{ secrets.YC_SERVICE_ACCOUNT_ID }}
+folder_id: {{ env.YC_FOLDER_ID }}
+service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
 description: Instance Group for {{ env.APP_NAME }}
 instance_template:
   platform_id: standard-v2
@@ -14,9 +14,9 @@ instance_template:
       type_id: network-hdd
       size: 21474836480
   network_interface_specs:
-    - network_id: {{ secrets.YC_NETWORK_ID }}
+    - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
-        - {{ secrets.YC_SUBNET_ID }}
+        - {{ env.YC_SUBNET_ID }}
       primary_v4_address_spec: {}
   labels:
     app: {{ env.APP_NAME }}

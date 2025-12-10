@@ -47,6 +47,10 @@ jobs:
           CR_REGISTRY: ${{ secrets.YC_REGISTRY }}
           CR_REPOSITORY: ${{ env.APP_NAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+          YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+          YC_NETWORK_ID: ${{ secrets.YC_NETWORK_ID }}
+          YC_SUBNET_ID: ${{ secrets.YC_SUBNET_ID }}
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ secrets.YC_FOLDER_ID }}
