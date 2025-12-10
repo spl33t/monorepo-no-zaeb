@@ -67,6 +67,7 @@ import 'dotenv/config';
 import http from 'http';
 
 const PORT = process.env.PORT || ${port};
+const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 работает и локально, и в контейнерах
 
 console.log('🚀 ${name} is running!');
 
@@ -86,8 +87,8 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ message: 'Hello from ${name}!', port: PORT }));
 });
 
-server.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(\`✅ Server is running on port \${PORT}\`);
+server.listen(Number(PORT), HOST, () => {
+  console.log(\`✅ Server is running on http://\${HOST}:\${PORT}\`);
 });
 `;
   fs.writeFileSync(path.join(appDir, 'src/index.ts'), indexContent);

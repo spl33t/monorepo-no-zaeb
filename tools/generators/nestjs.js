@@ -81,8 +81,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
   const port = process.env.PORT || ${port};
-  await app.listen(port);
-  console.log(\`🚀 ${name} is running on: http://localhost:\${port}\`);
+  const host = process.env.HOST || '0.0.0.0'; // 0.0.0.0 работает и локально, и в контейнерах
+  await app.listen(port, host);
+  console.log(\`🚀 ${name} is running on: http://\${host}:\${port}\`);
 }
 
 bootstrap();
