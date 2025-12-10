@@ -17,11 +17,36 @@ console.log('🚀 backend is running!');
 // Создаем HTTP сервер
 const server = http.createServer((req, res) => {
   // Health check endpoint для Instance Group
-  // Обрабатываем /health и /health/ (с trailing slash)
+  // Yandex Cloud требует: HTTP 200 статус, быстрый ответ
   const url = req.url?.split('?')[0]; // Убираем query параметры
+  
   if (url === '/health' || url === '/health/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
+    // Поддерживаем GET и HEAD запросы (некоторые health checks используют HEAD)
+    const method = req.method?.toUpperCase();
+    
+    if (method === 'GET' || method === 'HEAD') {
+      // HTTP 200 - успешный ответ
+      // Content-Type для JSON (хотя для HEAD не обязательно)
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+      };
+      
+      res.writeHead(200, headers);
+      
+      // Для HEAD запроса не отправляем тело ответа
+      if (method === 'HEAD') {
+        res.end();
+      } else {
+        // Для GET отправляем JSON
+        res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+      }
+      return;
+    }
+    
+    // Если не GET/HEAD, возвращаем 405 Method Not Allowed
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
     return;
   }
 
