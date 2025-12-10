@@ -56,12 +56,6 @@ export function hello(name: string): string {
 `;
   fs.writeFileSync(path.join(pkgDir, 'src/index.ts'), indexContent);
 
-  // Удаляем .gitkeep если он существует (больше не нужен после создания первого пакета)
-  const gitkeepPath = path.join(process.cwd(), 'packages', '.gitkeep');
-  if (fs.existsSync(gitkeepPath)) {
-    fs.unlinkSync(gitkeepPath);
-  }
-
   console.log('✅ Пакет создан:');
   console.log(`   packages/${name}/`);
   console.log(`   ├── src/`);

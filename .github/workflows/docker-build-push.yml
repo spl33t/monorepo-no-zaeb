@@ -1,0 +1,95 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application name from apps/ directory (e.g., backend)'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag (default: commit SHA, first 8 chars)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate application exists
+        run: |
+          if [ ! -d "apps/${{ github.event.inputs.app_name }}" ]; then
+            echo "❌ Error: Application 'apps/${{ github.event.inputs.app_name }}' not found!"
+            echo ""
+            echo "Available applications:"
+            ls -1 apps/ 2>/dev/null || echo "No apps directory found"
+            exit 1
+          fi
+          
+          if [ ! -f "apps/${{ github.event.inputs.app_name }}/Dockerfile" ]; then
+            echo "❌ Error: Dockerfile not found in 'apps/${{ github.event.inputs.app_name }}'"
+            exit 1
+          fi
+          
+          echo "✅ Application found: ${{ github.event.inputs.app_name }}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -s https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+          export PATH="$HOME/.yandex-cloud/bin:$PATH"
+          yc --version
+
+      - name: Authenticate Yandex Cloud
+        run: |
+          export PATH="$HOME/.yandex-cloud/bin:$PATH"
+          echo ${{ secrets.YC_OAUTH_TOKEN }} | yc auth login --token -
+
+      - name: Configure Docker for Yandex Registry
+        run: |
+          export PATH="$HOME/.yandex-cloud/bin:$PATH"
+          yc container registry configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build -f ./apps/${{ github.event.inputs.app_name }}/Dockerfile -t ${{ github.event.inputs.app_name }}:latest .
+
+      - name: Tag Docker image
+        run: |
+          export PATH="$HOME/.yandex-cloud/bin:$PATH"
+          
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          
+          if [ -z "${{ github.event.inputs.image_tag }}" ]; then
+            # Используем SHA коммита (первые 8 символов)
+            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:${GITHUB_SHA::8}"
+          else
+            # Используем указанный тег
+            IMAGE_TAG="${{ secrets.YC_REGISTRY }}/$APP_NAME:${{ github.event.inputs.image_tag }}"
+          fi
+          
+          docker tag $APP_NAME:latest $IMAGE_TAG
+          
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_TAG
+          echo "✅ Image pushed successfully!"
+
+      - name: Image info
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Build and Push completed!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Application: $APP_NAME"
+          echo "Registry: ${{ secrets.YC_REGISTRY }}"
+          echo "Image: $IMAGE_TAG"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

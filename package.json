@@ -3,8 +3,21 @@
   "private": true,
   "scripts": {
     "install:all": "npm install",
+    "--------------------------------Create commands--------------------------------": "",
     "create:app": "node tools/create-app.js",
-    "create:package": "node tools/create-package.js"
+    "create:package": "node tools/create-package.js",
+    "create:docker-compose": "node tools/create-docker-compose.js",
+    "--------------------------------Docker Production--------------------------------": "",
+    "docker:up": "docker compose up -d --build",
+    "docker:up:attach": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:ps": "docker compose ps",
+    "--------------------------------Docker Development--------------------------------": "",
+    "docker:up:dev": "docker compose -f docker-compose.dev.yml up --watch --build",
+    "docker:down:dev": "docker compose -f docker-compose.dev.yml down",
+    "docker:logs:dev": "docker compose -f docker-compose.dev.yml logs -f",
+    "docker:ps:dev": "docker compose -f docker-compose.dev.yml ps"
   },
   "workspaces": [
     "apps/*",
