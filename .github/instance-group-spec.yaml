@@ -1,0 +1,49 @@
+name: {{ env.APP_NAME }}-ig
+folder_id: {{ secrets.YC_FOLDER_ID }}
+service_account_id: {{ secrets.YC_SERVICE_ACCOUNT_ID }}
+description: Instance Group for {{ env.APP_NAME }}
+instance_template:
+  platform_id: standard-v2
+  resources:
+    cores: 2
+    memory: 4GB
+  boot_disk:
+    mode: READ_WRITE
+    disk_spec:
+      image_id: fd8kdq6d0pfr0it8v133
+      type_id: network-hdd
+      size: 20GB
+  network_interface_specs:
+    - network_id: {{ secrets.YC_NETWORK_ID }}
+      subnet_ids:
+        - {{ secrets.YC_SUBNET_ID }}
+      primary_v4_address_spec: {}
+  container_spec:
+    image: cr.yandex/{{ env.CR_REGISTRY }}/{{ env.CR_REPOSITORY }}:{{ env.IMAGE_TAG }}
+    # command можно не указывать, т.к. в Dockerfile уже есть CMD ["node", "dist/index.js"]
+    environment:
+      PORT: "3333"
+      NODE_ENV: production
+  labels:
+    app: {{ env.APP_NAME }}
+scale_policy:
+  fixed_scale:
+    size: 2
+allocation_policy:
+  zones:
+    - zone_id: ru-central1-a
+deploy_policy:
+  max_unavailable: 1
+  max_expansion: 1
+  max_deleting: 1
+  max_creating: 1
+  startup_duration: 60s
+health_checks_spec:
+  http_options:
+    path: /health
+    port: 3333
+  interval_seconds: 10
+  timeout_seconds: 5
+  unhealthy_threshold: 3
+  healthy_threshold: 2
+
