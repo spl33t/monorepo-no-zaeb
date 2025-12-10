@@ -58,7 +58,7 @@ jobs:
             if grep -q "ssh-rsa\|ssh-ed25519\|ecdsa" .github/user-data-temp.yaml; then
               echo "✅ SSH key successfully added to user-data"
               echo "Preview (first 100 chars):"
-              grep "ssh-keys" .github/user-data-temp.yaml | head -c 100
+              grep -E "ssh-rsa|ssh-ed25519|ecdsa" .github/user-data-temp.yaml | head -c 100
               echo ""
             else
               echo "❌ ERROR: SSH key was not properly substituted!"
@@ -72,13 +72,6 @@ jobs:
             echo "⚠️ SSH_PUBLIC_KEY not found in secrets, using original user-data.yaml"
             cp .github/user-data.yaml .github/user-data-temp.yaml
           fi
-
-      - name: Show user-data content (debug)
-        run: |
-          echo "📄 Final user-data content:"
-          cat .github/user-data-temp.yaml
-          echo ""
-          echo "---"
 
       - name: Deploy to VM
         uses: yc-actions/yc-coi-deploy@v2

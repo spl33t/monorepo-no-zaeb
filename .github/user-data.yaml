@@ -1,13 +1,14 @@
+#cloud-config
 # User-data для Container Optimized Image
 # Подробнее: https://cloud.yandex.ru/docs/compute/concepts/vm-metadata
 #
 # SSH ключи для доступа к VM
-# Формат: "username:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host"
 # Для Container Optimized Image используется пользователь yc-user
 #
+# ВАЖНО: Для Yandex Cloud user-data должен быть в формате cloud-init YAML
 # SSH ключ подставляется автоматически из GitHub Secrets (SSH_PUBLIC_KEY)
-# через workflow deploy-vm.yml
-#
-# SSH ключ будет подставлен из GitHub Secrets при деплое
-ssh-keys: "yc-user:SSH_PUBLIC_KEY_PLACEHOLDER"
+users:
+  - name: yc-user
+    ssh_authorized_keys:
+      - SSH_PUBLIC_KEY_PLACEHOLDER
 
