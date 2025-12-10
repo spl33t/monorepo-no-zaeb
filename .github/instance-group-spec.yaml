@@ -18,11 +18,11 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      primary_v4_address_spec:
-        # Публичный IP для SSH доступа (опционально)
-        # Раскомментируйте, если нужен публичный доступ:
-        # one_to_one_nat_spec:
-        #   ip_version: IPV4
+      # Публичный IP для SSH доступа (опционально)
+      # Раскомментируйте, если нужен публичный доступ:
+      # primary_v4_address_spec:
+      #   one_to_one_nat_spec:
+      #     ip_version: IPV4
   # SSH ключи для доступа к инстансам
   # Формат: "username:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host"
   # Для Container Optimized Image используется пользователь yc-user

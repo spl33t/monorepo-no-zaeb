@@ -51,6 +51,7 @@ jobs:
           YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
           YC_NETWORK_ID: ${{ secrets.YC_NETWORK_ID }}
           YC_SUBNET_ID: ${{ secrets.YC_SUBNET_ID }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ secrets.YC_FOLDER_ID }}
