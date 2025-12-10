@@ -67,7 +67,13 @@ import 'dotenv/config';
 import http from 'http';
 
 const PORT = process.env.PORT || ${port};
-const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 работает и локально, и в контейнерах
+// 0.0.0.0 означает "слушать на всех сетевых интерфейсах"
+// Это позволяет серверу быть доступным:
+// - Локально: http://localhost:\${PORT} или http://127.0.0.1:\${PORT}
+// - Из сети: http://<IP-адрес>:\${PORT}
+// - В контейнерах: для health checks от Instance Group
+// ⚠️ В браузере нельзя перейти по 0.0.0.0 - используйте localhost!
+const HOST = process.env.HOST || '0.0.0.0';
 
 console.log('🚀 ${name} is running!');
 
@@ -98,6 +104,7 @@ server.listen(Number(PORT), HOST, () => {
 # Copy this file to .env and set your values
 
 PORT=${port}
+HOST=0.0.0.0
 NODE_ENV=development
 `;
   fs.writeFileSync(path.join(appDir, '.env.example'), envExample);
