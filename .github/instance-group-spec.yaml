@@ -2,6 +2,11 @@ name: {{ env.IG_NAME }}
 folder_id: {{ env.YC_FOLDER_ID }}
 service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
 description: Instance Group for {{ env.APP_NAME }}
+# Лейблы на уровне группы для организации и фильтрации
+labels:
+  app: {{ env.APP_NAME }}
+  environment: production
+  managed-by: github-actions
 instance_template:
   platform_id: standard-v2
   service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
@@ -21,24 +26,34 @@ instance_template:
         - {{ env.YC_SUBNET_ID }}
       security_group_ids:
         - {{ env.YC_SECURITY_GROUP_ID }}
-      # Публичный IP необходим для health checks от Instance Group (на практике)
-      # Health checks от Load Balancer работают через внутреннюю сеть
-      primary_v4_address_spec:
-        one_to_one_nat_spec:
-          ip_version: IPV4
+      # Инстансы будут иметь только приватные IP адреса
+      # Доступ через Load Balancer (health checks работают через внутреннюю сеть)
   metadata:
     # SSH ключ для доступа к инстансам
     # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
     # Убедитесь, что добавили SSH_PUBLIC_KEY в GitHub Secrets
     ssh-keys: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
+    # Переменные окружения для контейнеров (опционально)
+    # Можно передавать через user-data.yaml или docker-compose.yaml
+    # Пример (если нужно передать в metadata):
+    # user-data: |
+    #   #!/bin/bash
+    #   export ENV_VAR="value"
   labels:
     app: {{ env.APP_NAME }}
+    environment: production  # Можно сделать через переменную {{ env.ENVIRONMENT }}
+    managed-by: github-actions
+    version: {{ env.IMAGE_TAG }}  # Версия образа для отслеживания
 scale_policy:
   fixed_scale:
     size: 2
 allocation_policy:
+  # Множественные зоны для отказоустойчивости
+  # Инстансы будут распределены между зонами
   zones:
     - zone_id: ru-central1-a
+    - zone_id: ru-central1-b
+    # - zone_id: ru-central1-c  # Раскомментируйте, если нужна третья зона
 deploy_policy:
   max_unavailable: 1
   max_expansion: 1
@@ -47,7 +62,7 @@ deploy_policy:
   startup_duration: 120s
 
 # Health checks от Instance Group
-# На практике требуют публичный IP для работы (хотя в документации указано, что работают через внутреннюю сеть)
+# Работают через внутреннюю сеть (не требуют публичный IP)
 # Это проверки работоспособности приложения на инстансе
 health_checks_spec:
   health_check_specs:
@@ -63,10 +78,27 @@ health_checks_spec:
 # Интеграция с Network Load Balancer
 # Автоматически создаст Target Group и привяжет к Instance Group
 # Health checks от Load Balancer работают через внутреннюю сеть (не требуют публичный IP)
+# Настроены health checks для автоматической проверки работоспособности инстансов
 load_balancer_spec:
   target_group_spec:
     name: {{ env.IG_NAME }}-tg
     description: Target group for {{ env.APP_NAME }} instance group
+    # Лейблы для организации target group
+    labels:
+      app: {{ env.APP_NAME }}
+      environment: production
+      managed-by: github-actions
+    # Health checks для Load Balancer
+    # Проверяют доступность инстансов через HTTP запросы к /health
+    healthchecks:
+      - name: http-healthcheck
+        interval: 10s              # Проверка каждые 10 секунд
+        timeout: 5s                # Таймаут 5 секунд
+        unhealthy_threshold: 3     # После 3 неудачных проверок - unhealthy
+        healthy_threshold: 2       # После 2 успешных проверок - healthy
+        http_options:
+          port: {{ env.PORT }}     # Порт приложения
+          path: /health            # Путь для health check
   max_opening_traffic_duration: 120s
   ignore_health_checks: false  # Используем health checks от Load Balancer (работают через внутреннюю сеть)
 
