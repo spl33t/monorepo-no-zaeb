@@ -19,10 +19,8 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      # Публичный IP для общего доступа
-      primary_v4_address_spec:
-        one_to_one_nat_spec:
-          ip_version: IPV4
+      # Без публичного IP - доступ только через внутреннюю сеть
+      primary_v4_address_spec: {}
   metadata:
     # SSH ключ для доступа к инстансам
     # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
