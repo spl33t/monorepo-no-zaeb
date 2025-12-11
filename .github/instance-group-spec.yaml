@@ -51,11 +51,14 @@ health_checks_spec:
          path: /health
    max_checking_health_duration: 120s
 
-# Интеграция с Load Balancer
+# Интеграция с Network Load Balancer
 # Автоматически создаст Target Group и привяжет к Instance Group
 load_balancer_spec:
   target_group_spec:
     name: {{ env.IG_NAME }}-tg
+    description: Target group for {{ env.APP_NAME }} instance group
+  max_opening_traffic_duration: 120s
+  ignore_health_checks: false
 
 # Autohealing (автоматическое восстановление)
 # Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
