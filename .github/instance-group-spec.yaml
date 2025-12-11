@@ -18,16 +18,12 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      # primary_v4_address_spec обязателен (даже если пустой)
-      # Публичный IP не нужен в продакшене:
-      # - Backend доступен через Load Balancer (у него есть публичный IP)
-      # - SSH доступ можно организовать через VPN, бастион-хост или серийную консоль
-      # - Это экономит ~100₽/месяц за каждый IP
-      primary_v4_address_spec: {}
-      # Если все же нужен публичный IP для SSH (не рекомендуется для продакшена):
-      # primary_v4_address_spec:
-      #   one_to_one_nat_spec:
-      #     ip_version: IPV4
+      # ВРЕМЕННО: Публичный IP для SSH доступа (для диагностики)
+      primary_v4_address_spec:
+        one_to_one_nat_spec:
+          ip_version: IPV4
+      # Для продакшена (без публичного IP):
+      # primary_v4_address_spec: {}
   # SSH ключи для доступа к инстансам
   # Формат: "username:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB... user@host"
   # Для Container Optimized Image используется пользователь yc-user
@@ -49,27 +45,28 @@ deploy_policy:
   max_expansion: 1
   max_deleting: 1
   max_creating: 1
-  startup_duration: 180s
-health_checks_spec:
-  health_check_specs:
-    # TCP health check (проверяет, что порт открыт)
-    # Проще и надежнее, чем HTTP - не требует работающего endpoint
-    - interval: 10s
-      timeout: 5s
-      unhealthy_threshold: 5
-      healthy_threshold: 2
-      tcp_options:
-        port: 3333
-    # Альтернативный HTTP health check (проверяет endpoint /health)
-    # Раскомментируйте, если хотите использовать HTTP вместо TCP:
-    # - interval: 10s
-    #   timeout: 10s
-    #   unhealthy_threshold: 5
-    #   healthy_threshold: 2
-    #   http_options:
-    #     port: 3333
-    #     path: /health
-  max_checking_health_duration: 120s
+  startup_duration: 120s
+# ВРЕМЕННО ОТКЛЮЧЕНО: Health check отключен для диагностики
+# Раскомментируйте после завершения диагностики:
+# health_checks_spec:
+#   health_check_specs:
+#     # HTTP health check (проверяет endpoint /health)
+#     - interval: 10s
+#       timeout: 5s
+#       unhealthy_threshold: 5
+#       healthy_threshold: 2
+#       http_options:
+#         port: 3333
+#         path: /health
+#     # Альтернативный TCP health check (просто проверяет, что порт открыт)
+#     # Раскомментируйте, если HTTP health check не работает:
+#     # - interval: 10s
+#     #   timeout: 5s
+#     #   unhealthy_threshold: 5
+#     #   healthy_threshold: 2
+#     #   tcp_options:
+#     #     port: 3333
+#   max_checking_health_duration: 120s
 
 # Autohealing (автоматическое восстановление)
 # Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
