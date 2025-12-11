@@ -154,14 +154,11 @@ COPY --from=builder /app/apps/${name}/dist ./apps/${name}/dist
 
 WORKDIR /app/apps/${name}
 
-# Accept port as build argument (default: ${port})
-ARG PORT=${port}
+# Set default port (can be overridden via environment variable in docker-compose)
+ENV PORT=${port}
 
-# Set port from build argument or environment variable
-ENV PORT=\${PORT}
-
-# Expose port
-EXPOSE \${PORT}
+# Expose default port (actual port is controlled by PORT env variable at runtime)
+EXPOSE ${port}
 
 # Start application
 CMD ["node", "dist/index.js"]
@@ -189,15 +186,12 @@ COPY apps/${name} ./apps/${name}/
 
 WORKDIR /app/apps/${name}
 
-# Accept port as build argument (default: ${port})
-ARG PORT=${port}
-
-# Set port from build argument or environment variable
-ENV PORT=\${PORT}
+# Set default port (can be overridden via environment variable)
+ENV PORT=${port}
 ENV NODE_ENV=development
 
-# Expose port
-EXPOSE \${PORT}
+# Expose default port
+EXPOSE ${port}
 
 # Start in dev mode (with nodemon/ts-node)
 CMD ["npm", "run", "dev"]

@@ -42,14 +42,11 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 WORKDIR /app/apps/api
 
-# Accept port as build argument (default: 4444)
-ARG PORT=4444
+# Set default port (can be overridden via environment variable in docker-compose)
+ENV PORT=4444
 
-# Set port from build argument or environment variable
-ENV PORT=${PORT}
-
-# Expose port
-EXPOSE ${PORT}
+# Expose default port (actual port is controlled by PORT env variable at runtime)
+EXPOSE 4444
 
 # Start application
 CMD ["node", "dist/index.js"]

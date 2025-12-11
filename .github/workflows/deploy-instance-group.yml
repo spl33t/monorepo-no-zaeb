@@ -65,6 +65,36 @@ jobs:
           echo "🖥️ Instance Group name: $IG_NAME"
           echo "🔌 Using port: $PORT"
 
+      - name: Prepare docker-compose with environment variables
+        run: |
+          # Подставляем переменные окружения в docker-compose.yaml
+          # Docker Compose не поддерживает шаблоны напрямую, поэтому делаем подстановку вручную
+          CR_REGISTRY="${{ secrets.YC_REGISTRY }}"
+          CR_REPOSITORY="${{ env.IMAGE_NAME }}"
+          IMAGE_TAG="${{ env.IMAGE_TAG }}"
+          PORT="${{ env.PORT }}"
+          
+          # Создаем временный docker-compose с подстановкой значений
+          sed -e "s|{{ env.CR_REGISTRY }}|${CR_REGISTRY}|g" \
+              -e "s|{{ env.CR_REPOSITORY }}|${CR_REPOSITORY}|g" \
+              -e "s|{{ env.IMAGE_TAG }}|${IMAGE_TAG}|g" \
+              -e "s|{{ env.PORT }}|${PORT}|g" \
+              .github/docker-compose.yaml > .github/docker-compose-temp.yaml
+          
+          echo "✅ Docker Compose prepared with:"
+          echo "   Registry: $CR_REGISTRY"
+          echo "   Repository: $CR_REPOSITORY"
+          echo "   Image tag: $IMAGE_TAG"
+          echo "   Port: $PORT"
+          
+          # Проверяем, что подстановка прошла успешно
+          if grep -q "{{ env\." .github/docker-compose-temp.yaml; then
+            echo "⚠️ WARNING: Some template variables were not substituted!"
+            grep "{{ env\." .github/docker-compose-temp.yaml
+          else
+            echo "✅ All template variables substituted successfully"
+          fi
+
       - name: Deploy to Instance Group
         uses: yc-actions/yc-coi-deploy-ig@v2
         env:
@@ -83,7 +113,7 @@ jobs:
           folder-id: ${{ secrets.YC_FOLDER_ID }}
           ig-spec-path: './.github/instance-group-spec.yaml'
           user-data-path: './.github/user-data.yaml'
-          docker-compose-path: './.github/docker-compose.yaml'
+          docker-compose-path: './.github/docker-compose-temp.yaml'
 
       - name: Deployment info
         run: |
