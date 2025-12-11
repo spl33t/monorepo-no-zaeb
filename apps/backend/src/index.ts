@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 
-import 'dotenv/config';
+// Загружаем dotenv с опцией override: false, чтобы переменные окружения из docker-compose
+// имели приоритет над .env файлом
+try {
+  const dotenv = require('dotenv');
+  dotenv.config({ override: false });
+} catch (e) {
+  // dotenv может быть недоступен в некоторых окружениях - это нормально
+  // переменные окружения из docker-compose все равно будут работать
+}
+
 import http from 'http';
 
-const PORT = process.env.PORT || 3333;
+// Переменная окружения PORT из docker-compose имеет приоритет над .env файлом
+const PORT = Number(process.env.PORT) || 3333;
 // 0.0.0.0 означает "слушать на всех сетевых интерфейсах"
 // Это позволяет серверу быть доступным:
 // - Локально: http://localhost:3333 или http://127.0.0.1:3333
