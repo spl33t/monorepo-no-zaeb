@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      port:
+        description: 'Application port (default: 3333)'
+        required: false
+        default: '3333'
+        type: string
 
 jobs:
   deploy:
@@ -40,12 +45,21 @@ jobs:
           REPO_OWNER="${{ github.repository_owner }}"
           VM_NAME="${REPO_OWNER}-${APP_NAME}"
           
+          # Определяем порт
+          if [ -z "${{ github.event.inputs.port }}" ]; then
+            PORT="3333"
+          else
+            PORT="${{ github.event.inputs.port }}"
+          fi
+          
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "IMAGE_FULL=$IMAGE_FULL" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "VM_NAME=$VM_NAME" >> $GITHUB_ENV
+          echo "PORT=$PORT" >> $GITHUB_ENV
           echo "📦 Deploying image: $IMAGE_FULL"
           echo "🖥️ VM name: $VM_NAME"
+          echo "🔌 Using port: $PORT"
 
       - name: Deploy to VM
         uses: yc-actions/yc-coi-deploy@v2
@@ -53,6 +67,7 @@ jobs:
           CR_REGISTRY: ${{ secrets.YC_REGISTRY }}
           CR_REPOSITORY: ${{ env.APP_NAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          PORT: ${{ env.PORT }}
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ secrets.YC_FOLDER_ID }}
@@ -127,5 +142,6 @@ jobs:
           echo "Application: ${{ env.APP_NAME }}"
           echo "VM Name: ${{ env.VM_NAME }}"
           echo "Image: ${{ env.IMAGE_FULL }}"
+          echo "Port: ${{ env.PORT }}"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
