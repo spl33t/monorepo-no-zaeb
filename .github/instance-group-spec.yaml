@@ -1,4 +1,4 @@
-name: {{ env.APP_NAME }}-ig
+name: {{ env.IG_NAME }}
 folder_id: {{ env.YC_FOLDER_ID }}
 service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
 description: Instance Group for {{ env.APP_NAME }}

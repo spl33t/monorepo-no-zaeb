@@ -42,11 +42,14 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 WORKDIR /app/apps/api
 
-# Set port from environment variable
-ENV PORT=4444
+# Accept port as build argument (default: 4444)
+ARG PORT=4444
+
+# Set port from build argument or environment variable
+ENV PORT=${PORT}
 
 # Expose port
-EXPOSE 4444
+EXPOSE ${PORT}
 
 # Start application
 CMD ["node", "dist/index.js"]

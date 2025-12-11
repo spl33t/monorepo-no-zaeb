@@ -30,6 +30,10 @@ jobs:
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
           
+          # Формируем имя образа: owner-or-org-appname
+          REPO_OWNER="${{ github.repository_owner }}"
+          IMAGE_NAME="${REPO_OWNER}-${APP_NAME}"
+          
           if [ -z "${{ github.event.inputs.image_tag }}" ]; then
             # Используем SHA коммита (первые 8 символов)
             COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
@@ -39,10 +43,9 @@ jobs:
             IMAGE_TAG="${{ github.event.inputs.image_tag }}"
           fi
           
-          IMAGE_FULL="cr.yandex/${{ secrets.YC_REGISTRY }}/$APP_NAME:$IMAGE_TAG"
+          IMAGE_FULL="cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:$IMAGE_TAG"
           
           # Формируем имя VM: owner-or-org-appname
-          REPO_OWNER="${{ github.repository_owner }}"
           VM_NAME="${REPO_OWNER}-${APP_NAME}"
           
           # Определяем порт
@@ -54,6 +57,7 @@ jobs:
           
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "IMAGE_FULL=$IMAGE_FULL" >> $GITHUB_ENV
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "VM_NAME=$VM_NAME" >> $GITHUB_ENV
           echo "PORT=$PORT" >> $GITHUB_ENV
@@ -97,7 +101,7 @@ jobs:
         uses: yc-actions/yc-coi-deploy@v2
         env:
           CR_REGISTRY: ${{ secrets.YC_REGISTRY }}
-          CR_REPOSITORY: ${{ env.APP_NAME }}
+          CR_REPOSITORY: ${{ env.IMAGE_NAME }}
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
           PORT: ${{ env.PORT }}
         with:

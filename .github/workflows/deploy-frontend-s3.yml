@@ -74,11 +74,28 @@ jobs:
           
           echo "✅ Build output found: $APP_DIR/$BUILD_OUTPUT"
 
+      - name: Build bucket name
+        id: bucket
+        run: |
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          
+          if [ -n "${{ github.event.inputs.bucket_name }}" ]; then
+            # Используем указанное имя bucket
+            BUCKET_NAME="${{ github.event.inputs.bucket_name }}"
+          else
+            # Формируем имя bucket: owner-or-org-appname
+            REPO_OWNER="${{ github.repository_owner }}"
+            BUCKET_NAME="${REPO_OWNER}-${APP_NAME}"
+          fi
+          
+          echo "name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "🌐 Bucket name: $BUCKET_NAME"
+
       - name: Upload files to Object Storage
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
-          bucket: ${{ github.event.inputs.bucket_name || 'mv-dating' }}
+          bucket: ${{ steps.bucket.outputs.name }}
           root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
           include: |
             **/*
@@ -86,7 +103,7 @@ jobs:
       - name: Set bucket URL
         id: bucket_url
         run: |
-          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
+          BUCKET_NAME="${{ steps.bucket.outputs.name }}"
           BUCKET_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
           
           echo "url=$BUCKET_URL" >> $GITHUB_OUTPUT
@@ -94,7 +111,7 @@ jobs:
 
       - name: Deployment info
         run: |
-          BUCKET_NAME="${{ github.event.inputs.bucket_name || 'mv-dating' }}"
+          BUCKET_NAME="${{ steps.bucket.outputs.name }}"
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Frontend deployment completed!"
