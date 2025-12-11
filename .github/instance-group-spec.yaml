@@ -24,8 +24,8 @@ instance_template:
       primary_v4_address_spec: {}
       # Публичный IP для SSH доступа (опционально):
       # primary_v4_address_spec:
-      #   one_to_one_nat_spec:
-      #     ip_version: IPV4
+        one_to_one_nat_spec:
+          ip_version: IPV4
   metadata:
     # SSH ключ для доступа к инстансам
     # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
@@ -45,27 +45,4 @@ deploy_policy:
   max_deleting: 1
   max_creating: 1
   startup_duration: 120s
-health_checks_spec:
-  health_check_specs:
-    # HTTP health check (проверяет endpoint /health)
-    - interval: 10s
-      timeout: 5s
-      unhealthy_threshold: 5
-      healthy_threshold: 2
-      http_options:
-        port: {{ env.PORT }}
-        path: /health
-    # Альтернативный TCP health check (просто проверяет, что порт открыт)
-    # Раскомментируйте, если HTTP health check не работает:
-    # - interval: 10s
-    #   timeout: 5s
-    #   unhealthy_threshold: 5
-    #   healthy_threshold: 2
-    #   tcp_options:
-    #     port: {{ env.PORT }}
-  max_checking_health_duration: 120s
 
-# Autohealing (автоматическое восстановление)
-# Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
-# Autohealing работает автоматически на основе health_checks_spec
-# Дополнительная настройка не требуется - включено по умолчанию
