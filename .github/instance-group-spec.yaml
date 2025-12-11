@@ -56,9 +56,6 @@ health_checks_spec:
 load_balancer_spec:
   target_group_spec:
     name: {{ env.IG_NAME }}-tg
-    target_group_labels:
-      app: {{ env.APP_NAME }}
-      instance-group: {{ env.IG_NAME }}
 
 # Autohealing (автоматическое восстановление)
 # Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
