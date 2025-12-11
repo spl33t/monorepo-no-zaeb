@@ -4,6 +4,7 @@ service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
 description: Instance Group for {{ env.APP_NAME }}
 instance_template:
   platform_id: standard-v2
+  service_account_id: {{ env.YC_SERVICE_ACCOUNT_ID }}
   resources_spec:
     cores: 2
     memory: 4294967296
