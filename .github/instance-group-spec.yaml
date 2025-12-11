@@ -19,7 +19,7 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      # Без публичного IP - доступ только через внутреннюю сеть
+      # Без публичного IP - доступ через Load Balancer
       primary_v4_address_spec: {}
   metadata:
     # SSH ключ для доступа к инстансам
@@ -50,6 +50,15 @@ health_checks_spec:
          port: {{ env.PORT }}
          path: /health
    max_checking_health_duration: 120s
+
+# Интеграция с Load Balancer
+# Автоматически создаст Target Group и привяжет к Instance Group
+load_balancer_spec:
+  target_group_spec:
+    name: {{ env.IG_NAME }}-tg
+    target_group_labels:
+      app: {{ env.APP_NAME }}
+      instance-group: {{ env.IG_NAME }}
 
 # Autohealing (автоматическое восстановление)
 # Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
