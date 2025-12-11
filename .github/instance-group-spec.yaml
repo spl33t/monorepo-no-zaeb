@@ -19,8 +19,13 @@ instance_template:
     - network_id: {{ env.YC_NETWORK_ID }}
       subnet_ids:
         - {{ env.YC_SUBNET_ID }}
-      # Без публичного IP - health checks от Load Balancer работают через внутреннюю сеть
-      primary_v4_address_spec: {}
+      security_group_ids:
+        - {{ env.YC_SECURITY_GROUP_ID }}
+      # Публичный IP необходим для health checks от Instance Group (на практике)
+      # Health checks от Load Balancer работают через внутреннюю сеть
+      primary_v4_address_spec:
+        one_to_one_nat_spec:
+          ip_version: IPV4
   metadata:
     # SSH ключ для доступа к инстансам
     # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
@@ -41,7 +46,8 @@ deploy_policy:
   max_creating: 1
   startup_duration: 120s
 
-# Health checks от Instance Group (работают через внутреннюю сеть, не требуют публичный IP)
+# Health checks от Instance Group
+# На практике требуют публичный IP для работы (хотя в документации указано, что работают через внутреннюю сеть)
 # Это проверки работоспособности приложения на инстансе
 health_checks_spec:
   health_check_specs:

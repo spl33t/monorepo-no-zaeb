@@ -106,6 +106,7 @@ jobs:
           YC_SERVICE_ACCOUNT_ID: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
           YC_NETWORK_ID: ${{ secrets.YC_NETWORK_ID }}
           YC_SUBNET_ID: ${{ secrets.YC_SUBNET_ID }}
+          YC_SECURITY_GROUP_ID: ${{ secrets.YC_SECURITY_GROUP_ID }}
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
           PORT: ${{ env.PORT }}
         with:
