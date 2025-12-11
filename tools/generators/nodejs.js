@@ -154,11 +154,14 @@ COPY --from=builder /app/apps/${name}/dist ./apps/${name}/dist
 
 WORKDIR /app/apps/${name}
 
-# Set port from environment variable
-ENV PORT=${port}
+# Accept port as build argument (default: ${port})
+ARG PORT=${port}
+
+# Set port from build argument or environment variable
+ENV PORT=\${PORT}
 
 # Expose port
-EXPOSE ${port}
+EXPOSE \${PORT}
 
 # Start application
 CMD ["node", "dist/index.js"]
@@ -186,12 +189,15 @@ COPY apps/${name} ./apps/${name}/
 
 WORKDIR /app/apps/${name}
 
-# Set port from environment variable
-ENV PORT=${port}
+# Accept port as build argument (default: ${port})
+ARG PORT=${port}
+
+# Set port from build argument or environment variable
+ENV PORT=\${PORT}
 ENV NODE_ENV=development
 
 # Expose port
-EXPOSE ${port}
+EXPOSE \${PORT}
 
 # Start in dev mode (with nodemon/ts-node)
 CMD ["npm", "run", "dev"]

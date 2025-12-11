@@ -30,9 +30,10 @@ jobs:
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
           
-          # Формируем имя образа: owner-or-org-appname
+          # Формируем имя образа: owner-reponame-appname
           REPO_OWNER="${{ github.repository_owner }}"
-          IMAGE_NAME="${REPO_OWNER}-${APP_NAME}"
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          IMAGE_NAME="${REPO_OWNER}-${REPO_NAME}-${APP_NAME}"
           
           if [ -z "${{ github.event.inputs.image_tag }}" ]; then
             # Используем SHA коммита (первые 8 символов)
@@ -45,8 +46,8 @@ jobs:
           
           IMAGE_FULL="cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:$IMAGE_TAG"
           
-          # Формируем имя VM: owner-or-org-appname
-          VM_NAME="${REPO_OWNER}-${APP_NAME}"
+          # Формируем имя VM: owner-reponame-appname
+          VM_NAME="${REPO_OWNER}-${REPO_NAME}-${APP_NAME}"
           
           # Определяем порт
           if [ -z "${{ github.event.inputs.port }}" ]; then

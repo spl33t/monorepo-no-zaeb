@@ -83,9 +83,10 @@ jobs:
             # Используем указанное имя bucket
             BUCKET_NAME="${{ github.event.inputs.bucket_name }}"
           else
-            # Формируем имя bucket: owner-or-org-appname
+            # Формируем имя bucket: owner-reponame-appname
             REPO_OWNER="${{ github.repository_owner }}"
-            BUCKET_NAME="${REPO_OWNER}-${APP_NAME}"
+            REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+            BUCKET_NAME="${REPO_OWNER}-${REPO_NAME}-${APP_NAME}"
           fi
           
           echo "name=$BUCKET_NAME" >> $GITHUB_OUTPUT
