@@ -88,19 +88,10 @@ load_balancer_spec:
       app: {{ env.APP_NAME }}
       environment: production
       managed-by: github-actions
-    # Health checks для Load Balancer
-    # Проверяют доступность инстансов через HTTP запросы к /health
-    healthchecks:
-      - name: http-healthcheck
-        interval: 10s              # Проверка каждые 10 секунд
-        timeout: 5s                # Таймаут 5 секунд
-        unhealthy_threshold: 3     # После 3 неудачных проверок - unhealthy
-        healthy_threshold: 2       # После 2 успешных проверок - healthy
-        http_options:
-          port: {{ env.PORT }}     # Порт приложения
-          path: /health            # Путь для health check
   max_opening_traffic_duration: 120s
   ignore_health_checks: false  # Используем health checks от Load Balancer (работают через внутреннюю сеть)
+  # Примечание: Health checks для Target Group настраиваются отдельно при создании/обновлении Load Balancer
+  # через консоль Yandex Cloud или через отдельный API вызов
 
 # Autohealing (автоматическое восстановление)
 # Если инстанс помечен как unhealthy, он будет автоматически перезапущен или пересоздан
