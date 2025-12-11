@@ -28,8 +28,7 @@ instance_template:
         - {{ env.YC_SECURITY_GROUP_ID }}
       # Инстансы будут иметь только приватные IP адреса (без публичного IP)
       # Доступ через Load Balancer (health checks работают через внутреннюю сеть)
-      primary_v4_address_spec:
-        # Без one_to_one_nat_spec - только приватный IP
+      primary_v4_address_spec: {}
   metadata:
     # SSH ключ для доступа к инстансам
     # Формат: "yc-user:{{ env.SSH_PUBLIC_KEY }}"
