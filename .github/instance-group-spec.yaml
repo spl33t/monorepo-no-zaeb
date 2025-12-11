@@ -49,12 +49,14 @@ scale_policy:
   fixed_scale:
     size: 2
 allocation_policy:
-  # Множественные зоны для отказоустойчивости
-  # Инстансы будут распределены между зонами
+  # Зоны доступности для размещения инстансов
+  # Для использования нескольких зон нужны подсети в каждой зоне
+  # Если подсети есть в нескольких зонах, добавьте их через переменные YC_SUBNET_ID_* и укажите здесь
   zones:
     - zone_id: ru-central1-a
-    - zone_id: ru-central1-b
-    # - zone_id: ru-central1-c  # Раскомментируйте, если нужна третья зона
+    # Раскомментируйте, если есть подсети в других зонах:
+    # - zone_id: ru-central1-b
+    # - zone_id: ru-central1-c
 deploy_policy:
   max_unavailable: 1
   max_expansion: 1
