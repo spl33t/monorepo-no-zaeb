@@ -12,9 +12,9 @@ services:
     # Порт пробрасывается автоматически из EXPOSE в Dockerfile
     # Но можно указать явно для ясности
     ports:
-      - "3333:3333"
+      - "{{ env.PORT }}:{{ env.PORT }}"
     environment:
-      PORT: "3333"
+      PORT: "{{ env.PORT }}"
       HOST: "0.0.0.0"
       NODE_ENV: production
     restart: always

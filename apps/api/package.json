@@ -1,0 +1,29 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --outfile=dist/index.js --packages=external",
+    "clean": "rimraf dist",
+    "dev": "nodemon --exec ts-node --transpile-only src/main.ts",
+    "start": "node dist/index.js",
+    "--------------------------------Docker commands--------------------------------": "",
+    "docker:build": "node ../../tools/docker-helper.js build Dockerfile api",
+    "docker:up": "node ../../tools/docker-helper.js up Dockerfile api 4444 -d",
+    "docker:up:attach": "node ../../tools/docker-helper.js up Dockerfile api 4444",
+    "docker:attach": "docker attach api",
+    "docker:down": "node ../../tools/docker-helper.js down api",
+    "docker:logs": "docker logs -f api"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0"
+  }
+}

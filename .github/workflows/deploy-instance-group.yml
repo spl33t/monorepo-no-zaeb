@@ -12,6 +12,11 @@ on:
         required: false
         default: ''
         type: string
+      port:
+        description: 'Application port (default: 3333)'
+        required: false
+        default: '3333'
+        type: string
 
 jobs:
   deploy:
@@ -36,10 +41,18 @@ jobs:
           
           IMAGE_FULL="cr.yandex/${{ secrets.YC_REGISTRY }}/$APP_NAME:$IMAGE_TAG"
           
+          if [ -z "${{ github.event.inputs.port }}" ]; then
+            PORT="3333"
+          else
+            PORT="${{ github.event.inputs.port }}"
+          fi
+          
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "IMAGE_FULL=$IMAGE_FULL" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "PORT=$PORT" >> $GITHUB_ENV
           echo "📦 Deploying image: $IMAGE_FULL"
+          echo "🔌 Using port: $PORT"
 
       - name: Deploy to Instance Group
         uses: yc-actions/yc-coi-deploy-ig@v2
@@ -52,6 +65,7 @@ jobs:
           YC_NETWORK_ID: ${{ secrets.YC_NETWORK_ID }}
           YC_SUBNET_ID: ${{ secrets.YC_SUBNET_ID }}
           SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+          PORT: ${{ env.PORT }}
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           folder-id: ${{ secrets.YC_FOLDER_ID }}

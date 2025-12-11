@@ -61,6 +61,38 @@ jobs:
           echo "🖥️ VM name: $VM_NAME"
           echo "🔌 Using port: $PORT"
 
+      - name: Prepare user-data with SSH key
+        run: |
+          # Создаем временный user-data с SSH ключом, если он указан
+          if [ -n "${{ secrets.SSH_PUBLIC_KEY }}" ]; then
+            echo "🔑 SSH key found in secrets"
+            echo "Key length: $(echo -n '${{ secrets.SSH_PUBLIC_KEY }}' | wc -c) characters"
+            
+            # Экранируем специальные символы для sed
+            SSH_KEY_ESCAPED=$(echo '${{ secrets.SSH_PUBLIC_KEY }}' | sed 's/[[\.*^$()+?{|]/\\&/g')
+            
+            # Создаем копию user-data.yaml с подстановкой SSH ключа
+            sed "s|SSH_PUBLIC_KEY_PLACEHOLDER|${SSH_KEY_ESCAPED}|g" .github/user-data.yaml > .github/user-data-temp.yaml
+            
+            # Проверяем, что подстановка прошла успешно
+            if grep -q "ssh-rsa\|ssh-ed25519\|ecdsa" .github/user-data-temp.yaml; then
+              echo "✅ SSH key successfully added to user-data"
+              echo "Preview (first 100 chars):"
+              grep -E "ssh-rsa|ssh-ed25519|ecdsa" .github/user-data-temp.yaml | head -c 100
+              echo ""
+            else
+              echo "❌ ERROR: SSH key was not properly substituted!"
+              echo "Original file:"
+              cat .github/user-data.yaml
+              echo "Generated file:"
+              cat .github/user-data-temp.yaml
+              exit 1
+            fi
+          else
+            echo "⚠️ SSH_PUBLIC_KEY not found in secrets, using original user-data.yaml"
+            cp .github/user-data.yaml .github/user-data-temp.yaml
+          fi
+
       - name: Deploy to VM
         uses: yc-actions/yc-coi-deploy@v2
         env:
@@ -79,60 +111,6 @@ jobs:
           vm-subnet-id: ${{ secrets.YC_SUBNET_ID }}
           user-data-path: './.github/user-data-temp.yaml'
           docker-compose-path: './.github/docker-compose.yaml'
-
-      - name: Update VM metadata with SSH key via API (optional)
-        if: secrets.SSH_PUBLIC_KEY != ''
-        run: |
-          echo "🔑 Updating VM metadata with SSH key via REST API..."
-          
-          # Получаем IAM токен из Service Account credentials
-          SA_KEY='${{ secrets.YC_SA_JSON_CREDENTIALS }}'
-          IAM_TOKEN=$(echo "$SA_KEY" | jq -r '.service_account_id // empty' | xargs -I {} sh -c 'curl -s -d "{\"yandexPassportOauthToken\":\"$(echo \"$SA_KEY\" | jq -r .oauth_token)\"}" "https://iam.api.cloud.yandex.net/iam/v1/tokens:exchange" | jq -r .iamToken' || echo "")
-          
-          # Если не получилось через oauth_token, пробуем через id и private_key
-          if [ -z "$IAM_TOKEN" ] || [ "$IAM_TOKEN" = "null" ]; then
-            SA_ID=$(echo "$SA_KEY" | jq -r '.service_account_id // .id')
-            SA_KEY_ID=$(echo "$SA_KEY" | jq -r '.id')
-            PRIVATE_KEY=$(echo "$SA_KEY" | jq -r '.private_key')
-            
-            # Создаем JWT токен для IAM
-            JWT=$(echo "$SA_KEY" | jq -r '.private_key' | openssl dgst -sha256 -sign /dev/stdin <(echo -n "test") 2>/dev/null | base64 -w 0 || echo "")
-            
-            # Получаем IAM токен через JWT
-            IAM_TOKEN=$(curl -s -X POST "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
-              -H "Content-Type: application/json" \
-              -d "{\"jwt\":\"$JWT\"}" | jq -r .iamToken || echo "")
-          fi
-          
-          # Если все еще нет токена, используем простой способ через oauth
-          if [ -z "$IAM_TOKEN" ] || [ "$IAM_TOKEN" = "null" ]; then
-            echo "⚠️ Could not get IAM token, skipping metadata update"
-            echo "SSH key will be applied via user-data only"
-            exit 0
-          fi
-          
-          # Получаем ID VM по имени
-          VM_NAME="${{ env.VM_NAME }}"
-          FOLDER_ID="${{ secrets.YC_FOLDER_ID }}"
-          
-          VM_ID=$(curl -s -H "Authorization: Bearer $IAM_TOKEN" \
-            "https://compute.api.cloud.yandex.net/compute/v1/instances?folderId=$FOLDER_ID" | \
-            jq -r ".instances[] | select(.name == \"$VM_NAME\") | .id" | head -1)
-          
-          if [ -z "$VM_ID" ] || [ "$VM_ID" = "null" ]; then
-            echo "⚠️ VM not found, skipping metadata update"
-            exit 0
-          fi
-          
-          # Обновляем метаданные VM с SSH ключом
-          SSH_KEY_VALUE="yc-user:${{ secrets.SSH_PUBLIC_KEY }}"
-          
-          curl -s -X POST "https://compute.api.cloud.yandex.net/compute/v1/instances/$VM_ID:updateMetadata" \
-            -H "Authorization: Bearer $IAM_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"metadata\":{\"ssh-keys\":\"$SSH_KEY_VALUE\"}}" > /dev/null
-          
-          echo "✅ VM metadata updated with SSH key via API"
 
       - name: Deployment info
         run: |
