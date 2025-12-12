@@ -124,16 +124,57 @@ jobs:
           include: |
             **/*
         
-      - name: Update latest version
+      - name: Update latest version (root of bucket for hosting)
         if: github.event.inputs.update_latest == true
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
           root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
-          prefix: versions/latest/
+          # Без prefix - загружаем в корень bucket для хостинга
+          # Yandex Object Storage требует, чтобы главная страница была без / в пути
           include: |
             **/*
+
+      - name: Create deployment metadata file
+        if: github.event.inputs.update_latest == true
+        run: |
+          VERSION="${{ steps.bucket.outputs.version }}"
+          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          DEPLOY_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Создаем временную директорию для файла метаданных
+          mkdir -p .deployment-metadata
+          
+          # Создаем JSON файл с метаинформацией о деплое
+          cat > .deployment-metadata/deployment.json << EOF
+          {
+            "version": "$VERSION",
+            "commit": {
+              "sha": "$COMMIT_SHA",
+              "short": "$(echo $COMMIT_SHA | cut -c1-8)",
+              "message": "$(echo "$COMMIT_MESSAGE" | sed 's/"/\\"/g' | head -c 200)"
+            },
+            "deployedAt": "$DEPLOY_TIME",
+            "repository": "${{ github.repository }}",
+            "branch": "${{ github.ref_name }}"
+          }
+          EOF
+          
+          echo "📝 Deployment metadata created:"
+          cat .deployment-metadata/deployment.json
+
+      - name: Upload deployment metadata to bucket root
+        if: github.event.inputs.update_latest == true
+        uses: yc-actions/yc-obj-storage-upload@v3
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          bucket: ${{ steps.bucket.outputs.name }}
+          root: .deployment-metadata
+          # Без prefix - загружаем в корень bucket
+          include: |
+            deployment.json
 
       - name: Set bucket URLs
         id: bucket_url
@@ -143,7 +184,7 @@ jobs:
           
           BASE_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
           VERSION_URL="$BASE_URL/versions/$VERSION"
-          LATEST_URL="$BASE_URL/versions/latest"
+          LATEST_URL="$BASE_URL"
           
           echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
           echo "version_url=$VERSION_URL" >> $GITHUB_OUTPUT
@@ -151,7 +192,7 @@ jobs:
           
           echo "🌐 Base URL: $BASE_URL"
           echo "📦 Version URL: $VERSION_URL"
-          echo "🔗 Latest URL: $LATEST_URL"
+          echo "🔗 Latest URL: $LATEST_URL (root of bucket for hosting)"
 
       - name: Deployment info
         run: |
@@ -177,10 +218,18 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
           echo "💡 Tips:"
-          echo "   • Configure CDN to point to: versions/latest/"
+          echo "   • Configure hosting: Main page = index.html (in bucket root)"
+          echo "   • Latest version is in bucket root (for hosting)"
           echo "   • Use versioned URLs for testing: versions/$VERSION/"
-          echo "   • CDN console: https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/cdn/resource"
+          echo "   • Hosting console: https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/storage/buckets/$BUCKET_NAME/hosting"
           echo ""
+          if [ "$UPDATE_LATEST" = "true" ]; then
+            echo "📋 Check current production deployment:"
+            echo "   • Metadata: curl ${{ steps.bucket_url.outputs.latest_url }}/deployment.json"
+            echo ""
+          fi
           echo "📚 Version history:"
           echo "   All versions are stored in: s3://$BUCKET_NAME/versions/"
+          echo "   Latest (production) is in bucket root for hosting"
+          echo "   Deployment metadata: deployment.json in bucket root"
 
