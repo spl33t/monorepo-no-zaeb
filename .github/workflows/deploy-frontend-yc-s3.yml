@@ -17,8 +17,8 @@ on:
         required: false
         default: ''
         type: string
-      deploy_to_latest:
-        description: 'Deploy to latest version (create/update latest symlink)'
+      update_latest:
+        description: 'Update latest version (for production deployments)'
         required: false
         default: true
         type: boolean
@@ -120,18 +120,18 @@ jobs:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
           root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
-          prefix: v/${{ steps.bucket.outputs.version }}/
+          prefix: versions/${{ steps.bucket.outputs.version }}/
           include: |
             **/*
         
-      - name: Deploy to latest version
-        if: github.event.inputs.deploy_to_latest == true
+      - name: Update latest version
+        if: github.event.inputs.update_latest == true
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
           root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
-          prefix: v/latest/
+          prefix: versions/latest/
           include: |
             **/*
 
@@ -142,8 +142,8 @@ jobs:
           VERSION="${{ steps.bucket.outputs.version }}"
           
           BASE_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
-          VERSION_URL="$BASE_URL/v/$VERSION"
-          LATEST_URL="$BASE_URL/v/latest"
+          VERSION_URL="$BASE_URL/versions/$VERSION"
+          LATEST_URL="$BASE_URL/versions/latest"
           
           echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
           echo "version_url=$VERSION_URL" >> $GITHUB_OUTPUT
@@ -157,7 +157,7 @@ jobs:
         run: |
           BUCKET_NAME="${{ steps.bucket.outputs.name }}"
           VERSION="${{ steps.bucket.outputs.version }}"
-          DEPLOY_TO_LATEST="${{ github.event.inputs.deploy_to_latest }}"
+          UPDATE_LATEST="${{ github.event.inputs.update_latest }}"
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Frontend deployment completed!"
@@ -169,16 +169,18 @@ jobs:
           echo ""
           echo "📍 URLs:"
           echo "   Version: ${{ steps.bucket_url.outputs.version_url }}"
-          if [ "$DEPLOY_TO_LATEST" = "true" ]; then
-            echo "   Latest:  ${{ steps.bucket_url.outputs.latest_url }}"
+          if [ "$UPDATE_LATEST" = "true" ]; then
+            echo "   Latest:  ${{ steps.bucket_url.outputs.latest_url }} (updated)"
+          else
+            echo "   Latest:  not updated (test deployment)"
           fi
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
           echo "💡 Tips:"
-          echo "   • Configure CDN to point to: v/latest/"
-          echo "   • Use versioned URLs for testing: v/$VERSION/"
+          echo "   • Configure CDN to point to: versions/latest/"
+          echo "   • Use versioned URLs for testing: versions/$VERSION/"
           echo "   • CDN console: https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/cdn/resource"
           echo ""
           echo "📚 Version history:"
-          echo "   All versions are stored in: s3://$BUCKET_NAME/v/"
+          echo "   All versions are stored in: s3://$BUCKET_NAME/versions/"
 
