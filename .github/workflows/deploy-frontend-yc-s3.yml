@@ -113,6 +113,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "🌐 Bucket name: $BUCKET_NAME"
           echo "📦 Version: $VERSION"
+          echo "🔄 Update latest: ${{ github.event.inputs.update_latest }}"
 
       - name: Upload files to versioned directory
         uses: yc-actions/yc-obj-storage-upload@v3
@@ -125,7 +126,7 @@ jobs:
             **/*
         
       - name: Update latest version (root of bucket for hosting)
-        if: github.event.inputs.update_latest == true
+        if: github.event.inputs.update_latest == 'true'
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
@@ -137,7 +138,7 @@ jobs:
             **/*
 
       - name: Create deployment metadata file
-        if: github.event.inputs.update_latest == true
+        if: github.event.inputs.update_latest == 'true'
         run: |
           VERSION="${{ steps.bucket.outputs.version }}"
           COMMIT_SHA="${{ github.sha }}"
@@ -166,7 +167,7 @@ jobs:
           cat .deployment-metadata/deployment.json
 
       - name: Upload deployment metadata to bucket root
-        if: github.event.inputs.update_latest == true
+        if: github.event.inputs.update_latest == 'true'
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
