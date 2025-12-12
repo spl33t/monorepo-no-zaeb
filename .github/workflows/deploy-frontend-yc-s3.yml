@@ -12,11 +12,6 @@ on:
         required: false
         default: 'mv-dating'
         type: string
-      version:
-        description: 'Version tag (leave empty to use commit SHA, first 8 chars)'
-        required: false
-        default: ''
-        type: string
       update_latest:
         description: 'Update latest version (for production deployments)'
         required: false
@@ -99,15 +94,9 @@ jobs:
             BUCKET_NAME="${REPO_OWNER}-${REPO_NAME}-${APP_NAME}"
           fi
           
-          # Определяем версию
-          if [ -z "${{ github.event.inputs.version }}" ]; then
-            # Используем SHA коммита (первые 8 символов)
-            COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-            VERSION="$COMMIT_SHA"
-          else
-            # Используем указанную версию
-            VERSION="${{ github.event.inputs.version }}"
-          fi
+          # Используем SHA коммита (первые 8 символов) для версионирования
+          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          VERSION="$COMMIT_SHA"
           
           echo "name=$BUCKET_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT

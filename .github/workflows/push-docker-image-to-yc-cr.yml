@@ -7,11 +7,11 @@ on:
         description: 'Application name from apps/ directory (e.g., backend)'
         required: true
         type: string
-      image_tag:
-        description: 'Image tag (leave empty to use commit SHA, first 8 chars)'
+      push_latest:
+        description: 'Also push as latest tag (for production deployments)'
         required: false
-        default: ''
-        type: string
+        default: true
+        type: boolean
 
 jobs:
   build-and-push:
@@ -39,6 +39,19 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.event.inputs.app_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ github.event.inputs.app_name }}-
+            ${{ runner.os }}-buildx-
 
       - name: Login to Yandex Cloud Container Registry
         uses: yc-actions/yc-cr-login@v3
@@ -58,43 +71,100 @@ jobs:
           echo "name=$IMAGE_NAME" >> $GITHUB_OUTPUT
           echo "app=$APP_NAME" >> $GITHUB_OUTPUT
           echo "📦 Image name: $IMAGE_NAME"
+          echo "🔄 Push latest: ${{ github.event.inputs.push_latest }}"
 
       - name: Build Docker image
         run: |
-          docker build -f ./apps/${{ github.event.inputs.app_name }}/Dockerfile -t ${{ steps.image_name.outputs.name }}:latest .
-
-      - name: Tag Docker image
-        run: |
-          APP_NAME="${{ steps.image_name.outputs.app }}"
+          APP_NAME="${{ github.event.inputs.app_name }}"
           IMAGE_NAME="${{ steps.image_name.outputs.name }}"
+          DOCKERFILE_PATH="./apps/$APP_NAME/Dockerfile"
           
-          if [ -z "${{ github.event.inputs.image_tag }}" ]; then
-            # Используем SHA коммита (первые 8 символов)
-            COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-            IMAGE_TAG="cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:$COMMIT_SHA"
-          else
-            # Используем указанный тег
-            IMAGE_TAG="cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:${{ github.event.inputs.image_tag }}"
-          fi
+          # Используем commit SHA (первые 8 символов) для версионирования
+          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          BUILD_TAG="$COMMIT_SHA"
           
-          docker tag $IMAGE_NAME:latest $IMAGE_TAG
+          # Собираем образ с метаданными и кешированием
+          docker buildx build \
+            --file "$DOCKERFILE_PATH" \
+            --tag "$IMAGE_NAME:latest" \
+            --tag "cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:$BUILD_TAG" \
+            --label "org.opencontainers.image.created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.version=$BUILD_TAG" \
+            --label "org.opencontainers.image.source=${{ github.repository }}" \
+            --label "org.opencontainers.image.title=$APP_NAME" \
+            --label "com.github.ref=${{ github.ref }}" \
+            --label "com.github.sha=${{ github.sha }}" \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache,mode=max \
+            --load \
+            .
           
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_ENV
+          echo "✅ Image built successfully!"
+          echo "📦 Version tag: $BUILD_TAG (from commit ${{ github.sha }})"
+
+      - name: Get image information
+        id: image_info
+        run: |
+          IMAGE_NAME="${{ steps.image_name.outputs.name }}"
+          BUILD_TAG="${{ env.BUILD_TAG }}"
+          FULL_IMAGE_TAG="cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:$BUILD_TAG"
+          
+          # Получаем размер образа
+          IMAGE_SIZE=$(docker image inspect $IMAGE_NAME:latest --format='{{.Size}}')
+          IMAGE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $IMAGE_SIZE / 1024 / 1024}")
+          
+          echo "full_tag=$FULL_IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "size_mb=$IMAGE_SIZE_MB" >> $GITHUB_OUTPUT
+          
+          echo "📦 Image tag: $FULL_IMAGE_TAG"
+          echo "📏 Image size: ${IMAGE_SIZE_MB} MB"
 
       - name: Push Docker image
         run: |
-          docker push $IMAGE_TAG
+          IMAGE_NAME="${{ steps.image_name.outputs.name }}"
+          FULL_IMAGE_TAG="${{ steps.image_info.outputs.full_tag }}"
+          
+          echo "🚀 Pushing image to registry..."
+          docker push $FULL_IMAGE_TAG
           echo "✅ Image pushed successfully!"
+
+      - name: Push latest tag
+        if: github.event.inputs.push_latest == 'true'
+        run: |
+          IMAGE_NAME="${{ steps.image_name.outputs.name }}"
+          FULL_IMAGE_TAG="${{ steps.image_info.outputs.full_tag }}"
+          
+          echo "🏷️  Pushing as latest tag..."
+          docker tag $IMAGE_NAME:latest "cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:latest"
+          docker push "cr.yandex/${{ secrets.YC_REGISTRY }}/$IMAGE_NAME:latest"
+          echo "✅ Latest tag pushed successfully!"
 
       - name: Image info
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Build and Push completed!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "Application: ${{ env.APP_NAME }}"
-          echo "Image name: ${{ env.IMAGE_NAME }}"
+          echo "Application: ${{ github.event.inputs.app_name }}"
+          echo "Image name: ${{ steps.image_name.outputs.name }}"
           echo "Registry: ${{ secrets.YC_REGISTRY }}"
-          echo "Image: ${{ env.IMAGE_TAG }}"
+          echo "Image tag: ${{ steps.image_info.outputs.full_tag }}"
+          echo "Image size: ${{ steps.image_info.outputs.size_mb }} MB"
+          echo ""
+          echo "📋 Image metadata:"
+          echo "   Commit: ${{ github.sha }}"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Repository: ${{ github.repository }}"
+          if [ "${{ github.event.inputs.push_latest }}" = "true" ]; then
+            echo "   Latest tag: ✅ pushed"
+          else
+            echo "   Latest tag: ⏭️  skipped (test deployment)"
+          fi
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "💡 Usage:"
+          echo "   docker pull ${{ steps.image_info.outputs.full_tag }}"
+          if [ "${{ github.event.inputs.push_latest }}" = "true" ]; then
+            echo "   docker pull cr.yandex/${{ secrets.YC_REGISTRY }}/${{ steps.image_name.outputs.name }}:latest"
+          fi
