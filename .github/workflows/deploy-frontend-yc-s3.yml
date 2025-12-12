@@ -12,6 +12,16 @@ on:
         required: false
         default: 'mv-dating'
         type: string
+      version:
+        description: 'Version tag (leave empty to use commit SHA, first 8 chars)'
+        required: false
+        default: ''
+        type: string
+      deploy_to_latest:
+        description: 'Deploy to latest version (create/update latest symlink)'
+        required: false
+        default: true
+        type: boolean
       build_command:
         description: 'Build command (default: npm run build)'
         required: false
@@ -74,7 +84,7 @@ jobs:
           
           echo "✅ Build output found: $APP_DIR/$BUILD_OUTPUT"
 
-      - name: Build bucket name
+      - name: Build bucket name and version
         id: bucket
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
@@ -89,40 +99,86 @@ jobs:
             BUCKET_NAME="${REPO_OWNER}-${REPO_NAME}-${APP_NAME}"
           fi
           
+          # Определяем версию
+          if [ -z "${{ github.event.inputs.version }}" ]; then
+            # Используем SHA коммита (первые 8 символов)
+            COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+            VERSION="$COMMIT_SHA"
+          else
+            # Используем указанную версию
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          
           echo "name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "🌐 Bucket name: $BUCKET_NAME"
+          echo "📦 Version: $VERSION"
 
-      - name: Upload files to Object Storage
+      - name: Upload files to versioned directory
         uses: yc-actions/yc-obj-storage-upload@v3
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
           root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
+          prefix: v/${{ steps.bucket.outputs.version }}/
+          include: |
+            **/*
+        
+      - name: Deploy to latest version
+        if: github.event.inputs.deploy_to_latest == true
+        uses: yc-actions/yc-obj-storage-upload@v3
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          bucket: ${{ steps.bucket.outputs.name }}
+          root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
+          prefix: v/latest/
           include: |
             **/*
 
-      - name: Set bucket URL
+      - name: Set bucket URLs
         id: bucket_url
         run: |
           BUCKET_NAME="${{ steps.bucket.outputs.name }}"
-          BUCKET_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
+          VERSION="${{ steps.bucket.outputs.version }}"
           
-          echo "url=$BUCKET_URL" >> $GITHUB_OUTPUT
-          echo "🌐 Bucket URL: $BUCKET_URL"
+          BASE_URL="https://storage.yandexcloud.net/$BUCKET_NAME"
+          VERSION_URL="$BASE_URL/v/$VERSION"
+          LATEST_URL="$BASE_URL/v/latest"
+          
+          echo "base_url=$BASE_URL" >> $GITHUB_OUTPUT
+          echo "version_url=$VERSION_URL" >> $GITHUB_OUTPUT
+          echo "latest_url=$LATEST_URL" >> $GITHUB_OUTPUT
+          
+          echo "🌐 Base URL: $BASE_URL"
+          echo "📦 Version URL: $VERSION_URL"
+          echo "🔗 Latest URL: $LATEST_URL"
 
       - name: Deployment info
         run: |
           BUCKET_NAME="${{ steps.bucket.outputs.name }}"
+          VERSION="${{ steps.bucket.outputs.version }}"
+          DEPLOY_TO_LATEST="${{ github.event.inputs.deploy_to_latest }}"
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Frontend deployment completed!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "Application: ${{ github.event.inputs.app_name }}"
           echo "Bucket: $BUCKET_NAME"
+          echo "Version: $VERSION"
           echo "Build output: ${{ github.event.inputs.build_output }}"
-          echo "URL: ${{ steps.bucket_url.outputs.url }}"
+          echo ""
+          echo "📍 URLs:"
+          echo "   Version: ${{ steps.bucket_url.outputs.version_url }}"
+          if [ "$DEPLOY_TO_LATEST" = "true" ]; then
+            echo "   Latest:  ${{ steps.bucket_url.outputs.latest_url }}"
+          fi
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
-          echo "💡 Tip: Configure CDN for better performance:"
-          echo "   https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/cdn/resource"
+          echo "💡 Tips:"
+          echo "   • Configure CDN to point to: v/latest/"
+          echo "   • Use versioned URLs for testing: v/$VERSION/"
+          echo "   • CDN console: https://console.cloud.yandex.ru/folders/${{ secrets.YC_FOLDER_ID }}/cdn/resource"
+          echo ""
+          echo "📚 Version history:"
+          echo "   All versions are stored in: s3://$BUCKET_NAME/v/"
 
