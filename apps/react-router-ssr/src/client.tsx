@@ -5,8 +5,8 @@
 import { hydrateRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
-import { RouteContextProvider, ReactRouterAdapter } from '@monorepo/routes-ssr';
-import { routes } from './routes';
+import { RouteContextProvider } from './context/RouteContext';
+import { ReactRouterAdapter } from './adapters/ReactRouterAdapter';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -15,27 +15,18 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 
+// Получаем initial context из window (инжектится сервером)
+const initialContext =
+  typeof window !== 'undefined' && (window as any).__ROUTE_CONTEXT__
+    ? (window as any).__ROUTE_CONTEXT__
+    : null;
+
 hydrateRoot(
   rootElement,
   <BrowserRouter>
-    <RouteContextProvider>
-      <ReactRouterAdapter
-        routes={routes}
-        getRootContext={async () => {
-          // Get root context for client-side navigation
-          // In real app, this would get context from auth/session
-          return {
-            requestId: crypto.randomUUID(),
-            locale: (navigator.language?.includes('ru') ? 'ru' : 'en') as 'ru' | 'en',
-            session: {
-              userId: '123',
-              role: 'user',
-            },
-          };
-        }}
-      />
+    <RouteContextProvider initialContext={initialContext}>
+      <ReactRouterAdapter />
       <App />
     </RouteContextProvider>
   </BrowserRouter>
 );
-

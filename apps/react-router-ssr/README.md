@@ -1,6 +1,6 @@
 # React Router SSR
 
-React Router приложение с SSR на базе `@monorepo/routes-ssr`.
+React Router приложение с SSR на базе `@monorepo/page-contract`.
 
 ## Структура
 

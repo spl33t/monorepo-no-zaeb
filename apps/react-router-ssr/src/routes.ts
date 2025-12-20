@@ -1,12 +1,9 @@
 /**
- * Routes configuration using @monorepo/routes-ssr
+ * Routes configuration using @monorepo/page-contract
  */
 
-import {
-  type PageFunction,
-  defineRoute,
-  createRoutesFactory,
-} from '@monorepo/routes-ssr';
+import type { PageFunction, PageInput } from '@monorepo/page-contract';
+import { createRoutes } from '@monorepo/page-contract';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -50,26 +47,50 @@ export type HomeRouteContext = {
 };
 
 // ============================================================================
+// HELPER: Get root context from PageInput
+// ============================================================================
+
+function getRootContextFromInput(input: PageInput): AppRootContext {
+  // В реальном приложении это будет извлекаться из headers/cookies
+  // Для примера используем заглушку
+  const locale = input.headers?.['accept-language']?.includes('ru')
+    ? 'ru'
+    : 'en';
+
+  return {
+    requestId: crypto.randomUUID(),
+    locale: locale as 'ru' | 'en',
+    session: {
+      userId: input.headers?.['x-user-id'] || null,
+      role: (input.headers?.['x-user-role'] as any) || null,
+    },
+  };
+}
+
+// ============================================================================
 // PAGE FUNCTIONS
 // ============================================================================
 
 /**
  * Home page function
  */
-const HomePage: PageFunction<
-  Record<string, never>,
-  AppRootContext,
-  HomeRouteContext
-> = async (_params, rootContext) => {
+const HomePage: PageFunction<Record<string, never>, HomeRouteContext> = async (
+  input
+) => {
+  const rootContext = getRootContextFromInput(input);
+
   return {
-    type: 'ok' as const,
-    routeContext: {
+    type: 'ok',
+    ctx: {
       message: `Welcome! Locale: ${rootContext.locale}`,
     },
     seo: {
       title: 'Home',
       description: 'Welcome to our application',
-      indexable: true,
+      meta: {
+        'og:title': 'Home',
+        'og:description': 'Welcome to our application',
+      },
     },
   };
 };
@@ -77,31 +98,23 @@ const HomePage: PageFunction<
 /**
  * Profile page function
  */
-const ProfilePage: PageFunction<
-  { id: string },
-  AppRootContext,
-  ProfileRouteContext
-> = async (params, rootContext) => {
-  console.log('ProfilePage', params, rootContext);
+const ProfilePage: PageFunction<{ id: string }, ProfileRouteContext> = async (
+  input
+) => {
+  const rootContext = getRootContextFromInput(input);
+
   // Guard: check authentication
   if (!rootContext.session?.userId) {
     return {
       type: 'redirect',
-   
+      to: '/login',
+      status: 302,
     };
   }
 
-  // Guard: check ownership
-/*   if (rootContext.session.userId !== params.id) {
-    return {
-      type: 'redirect' as const,
-      to: '/',
-    };
-  } */
-
   // Preload data (mock)
   const user = {
-    id: params.id,
+    id: input.params.id,
     name: 'John Doe',
     email: 'john@example.com',
   };
@@ -112,20 +125,19 @@ const ProfilePage: PageFunction<
   ];
 
   return {
-    type: 'ok' as const,
-    routeContext: {
-      userId: params.id,
+    type: 'ok',
+    ctx: {
+      userId: input.params.id,
       user,
       posts,
     },
     seo: {
       title: `Profile: ${user.name}`,
       description: `View profile of ${user.name}`,
-      indexable: false,
-      og: {
-        title: `Profile: ${user.name}`,
-        description: `View profile of ${user.name}`,
-        type: 'profile',
+      meta: {
+        'og:title': `Profile: ${user.name}`,
+        'og:description': `View profile of ${user.name}`,
+        'og:type': 'profile',
       },
     },
   };
@@ -134,76 +146,61 @@ const ProfilePage: PageFunction<
 /**
  * Product page function
  */
-const ProductPage: PageFunction<
-  { slug: string },
-  AppRootContext,
-  ProductRouteContext
-> = async (params, _rootContext) => {
-  // Preload product data (mock)
-  const product = {
-    id: '1',
-    slug: params.slug,
-    name: 'Laptop',
-    price: 999,
-    description: 'A great laptop',
-  };
-
-  if (params.slug !== 'laptop') {
-    return {
-      type: 'notFound' as const,
+const ProductPage: PageFunction<{ slug: string }, ProductRouteContext> =
+  async (input) => {
+    // Preload product data (mock)
+    const product = {
+      id: '1',
+      slug: input.params.slug,
+      name: 'Laptop',
+      price: 999,
+      description: 'A great laptop',
     };
-  }
 
-  return {
-    type: 'ok' as const,
-    routeContext: {
-      product,
-    },
-    seo: {
-      title: `Product: ${product.name}`,
-      description: product.description,
-      indexable: true,
-      og: {
-        title: product.name,
-        description: product.description,
-        type: 'product',
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: product.name,
-        description: product.description,
-      },
-      canonical: `https://example.com/product/${product.slug}`,
-    },
-  };
-};
+    if (input.params.slug !== 'laptop') {
+      return {
+        type: 'not-found',
+      };
+    }
 
-// ============================================================================
-// ROUTES FACTORY
-// ============================================================================
-
-export const createRoutes = createRoutesFactory<AppRootContext>({
-  getRootContext: async () => {
-    // In real app, this would get context from request
-    // For now, return mock context
     return {
-      requestId: crypto.randomUUID(),
-      locale: 'ru',
-      session: {
-        userId: '123',
-        role: 'user',
+      type: 'ok',
+      ctx: {
+        product,
+      },
+      seo: {
+        title: `Product: ${product.name}`,
+        description: product.description,
+        meta: {
+          'og:title': product.name,
+          'og:description': product.description,
+          'og:type': 'product',
+          'twitter:card': 'summary_large_image',
+          'twitter:title': product.name,
+          'twitter:description': product.description,
+        },
       },
     };
-  },
-});
+  };
 
 // ============================================================================
 // ROUTE DEFINITIONS
 // ============================================================================
 
-export const routes = createRoutes({
-  home: defineRoute('/', HomePage),
-  profile: defineRoute('/profile/:id', ProfilePage),
-  product: defineRoute('/product/:slug', ProductPage),
+export const routes = createRoutes<AppRootContext>({
+  appContext: getRootContextFromInput,
+  routes: {
+    home: {
+      path: '/',
+      page: HomePage,
+    },
+    profile: {
+      path: '/profile/:id',
+      page: ProfilePage,
+    },
+    product: {
+      path: '/product/:slug',
+      page: ProductPage,
+    },
+  },
 });
-

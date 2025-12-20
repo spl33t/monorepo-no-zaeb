@@ -1,4 +1,4 @@
-import { useRouteContext } from '@monorepo/routes-ssr';
+import { useRouteContext } from '../context/RouteContext';
 import type { ProductRouteContext } from '../routes';
 
 export function Product() {

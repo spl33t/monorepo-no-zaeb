@@ -6,12 +6,13 @@ import { routes } from '../routes';
  */
 export function Navigation() {
   const location = useLocation();
-  const links = routes._getLinks();
 
   return (
     <nav style={{ marginBottom: '20px', padding: '10px', borderBottom: '1px solid #ccc' }}>
       <ul style={{ listStyle: 'none', display: 'flex', gap: '20px', margin: 0, padding: 0 }}>
-        {links.map(({ key, path }) => {
+        {routes._routes.map((route) => {
+          const path = route.path;
+          
           // Skip routes with params for navigation (or show with example params)
           if (path.includes(':')) {
             // For routes with params, show example links
@@ -19,7 +20,7 @@ export function Navigation() {
               .replace(':id', '7')
               .replace(':slug', 'laptop');
             return (
-              <li key={key}>
+              <li key={path}>
                 <Link
                   to={examplePath}
                   style={{
@@ -27,14 +28,14 @@ export function Navigation() {
                     color: location.pathname === examplePath ? 'blue' : 'inherit',
                   }}
                 >
-                  {key} ({examplePath})
+                  {path} ({examplePath})
                 </Link>
               </li>
             );
           }
           
           return (
-            <li key={key}>
+            <li key={path}>
               <Link
                 to={path}
                 style={{
@@ -42,7 +43,7 @@ export function Navigation() {
                   color: location.pathname === path ? 'blue' : 'inherit',
                 }}
               >
-                {key}
+                {path}
               </Link>
             </li>
           );
