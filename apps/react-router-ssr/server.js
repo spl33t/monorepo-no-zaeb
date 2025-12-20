@@ -3,15 +3,12 @@
  * https://vite.dev/guide/ssr
  */
 
-import fs from 'node:fs/promises';
 import express from 'express';
 
 // Constants
 const isProduction = process.env.NODE_ENV === 'production';
 const port = process.env.PORT || 3000;
 const base = process.env.BASE || '/';
-
-// Production assets are served via sirv middleware
 
 // Create http server
 const app = express();
@@ -76,12 +73,17 @@ app.use('*', async (req, res) => {
       ),
     });
 
-    // Handle SSR request
-    // handleRequest already returns full HTML (with SSR content, SEO, scripts)
-    const response = await handleRequest(request, vite);
+    // Handle SSR request - получаем Response с полным HTML
+    const response = await handleRequest(request);
 
-    // Get response body
-    const html = await response.text();
+    // Get response body (это полный HTML)
+    let html = await response.text();
+
+    // В dev режиме используем Vite для трансформации HTML
+    // (добавляет CSS, правильные пути к скриптам из index.html)
+    if (!isProduction && vite) {
+      html = await vite.transformIndexHtml(req.originalUrl, html);
+    }
 
     // Copy response headers
     response.headers.forEach((value, key) => {

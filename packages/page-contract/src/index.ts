@@ -32,20 +32,42 @@ export { runPage } from './runtime'
 // Утилиты
 export { extractParams, parseQuery } from './utils'
 
-// Фабрика
+// Главная фабрика для инициализации (рекомендуемый способ)
+export {
+  createPageContract,
+  type CreatePageContractOptions,
+  type PageContract
+} from './contract-factory'
+
+// Фабрика routes (для прямого использования, если нужно)
 export {
   createRoutes,
   type CreateRoutesOptions,
   type Routes,
   type RouteDefinition,
-  type RoutesConfig
+  type RoutesConfig,
+  type CreateHandleRequestOptions,
+  type ExtractRoutesContext
 } from './factory'
 
-// SSR адаптер
+// Фабрика page functions (для прямого использования, если нужно)
+export {
+  definePage,
+  type PageHandlerWithContext,
+  type PageHandlerWithoutContext,
+  type DefinePageWithContextOptions
+} from './page-factory'
+
+// SSR адаптеры
 export {
   handleSsrRequest,
   type SsrAdapterOptions
 } from './adapters/ssr'
+
+export {
+  handleSsrRequestFetch,
+  type SsrFetchAdapterOptions
+} from './adapters/ssr-fetch'
 
 // SPA адаптер
 export {

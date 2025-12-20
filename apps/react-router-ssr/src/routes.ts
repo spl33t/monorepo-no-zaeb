@@ -2,8 +2,8 @@
  * Routes configuration using @monorepo/page-contract
  */
 
-import type { PageFunction, PageInput } from '@monorepo/page-contract';
-import { createRoutes } from '@monorepo/page-contract';
+import type { PageInput } from '@monorepo/page-contract';
+import { createPageContract } from '@monorepo/page-contract';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -68,96 +68,100 @@ function getRootContextFromInput(input: PageInput): AppRootContext {
 }
 
 // ============================================================================
+// INITIALIZE PAGE CONTRACT
+// ============================================================================
+
+const contract = createPageContract({
+  appContext: getRootContextFromInput,
+});
+
+// ============================================================================
 // PAGE FUNCTIONS
 // ============================================================================
 
 /**
  * Home page function
  */
-const HomePage: PageFunction<Record<string, never>, HomeRouteContext> = async (
-  input
-) => {
-  const rootContext = getRootContextFromInput(input);
-
-  return {
-    type: 'ok',
-    ctx: {
-      message: `Welcome! Locale: ${rootContext.locale}`,
-    },
-    seo: {
-      title: 'Home',
-      description: 'Welcome to our application',
-      meta: {
-        'og:title': 'Home',
-        'og:description': 'Welcome to our application',
+const HomePage = contract.definePage<Record<string, never>, HomeRouteContext>({
+  handler: async ({ rootContext }) => {
+    return {
+      type: 'ok',
+      ctx: {
+        message: `Welcome! Locale: ${rootContext.locale}`,
       },
-    },
-  };
-};
+      seo: {
+        title: 'Home',
+        description: 'Welcome to our application',
+        meta: {
+          'og:title': 'Home',
+          'og:description': 'Welcome to our application',
+        },
+      },
+    };
+  },
+});
 
 /**
  * Profile page function
  */
-const ProfilePage: PageFunction<{ id: string }, ProfileRouteContext> = async (
-  input
-) => {
-  const rootContext = getRootContextFromInput(input);
+const ProfilePage = contract.definePage<{ id: string }, ProfileRouteContext>({
+  handler: async ({ params, rootContext }) => {
+    // Guard: check authentication
+    if (!rootContext.session?.userId) {
+      return {
+        type: 'redirect',
+        to: '/login',
+        status: 302,
+      };
+    }
 
-  // Guard: check authentication
-  if (!rootContext.session?.userId) {
-    return {
-      type: 'redirect',
-      to: '/login',
-      status: 302,
+    // Preload data (mock)
+    const user = {
+      id: params.id,
+      name: 'John Doe',
+      email: 'john@example.com',
     };
-  }
 
-  // Preload data (mock)
-  const user = {
-    id: input.params.id,
-    name: 'John Doe',
-    email: 'john@example.com',
-  };
+    const posts = [
+      { id: '1', title: 'Post 1', content: 'Content 1' },
+      { id: '2', title: 'Post 2', content: 'Content 2' },
+    ];
 
-  const posts = [
-    { id: '1', title: 'Post 1', content: 'Content 1' },
-    { id: '2', title: 'Post 2', content: 'Content 2' },
-  ];
-
-  return {
-    type: 'ok',
-    ctx: {
-      userId: input.params.id,
-      user,
-      posts,
-    },
-    seo: {
-      title: `Profile: ${user.name}`,
-      description: `View profile of ${user.name}`,
-      meta: {
-        'og:title': `Profile: ${user.name}`,
-        'og:description': `View profile of ${user.name}`,
-        'og:type': 'profile',
+    return {
+      type: 'ok',
+      ctx: {
+        userId: params.id,
+        user,
+        posts,
       },
-    },
-  };
-};
+      seo: {
+        title: `Profile: ${user.name}`,
+        description: `View profile of ${user.name}`,
+        meta: {
+          'og:title': `Profile: ${user.name}`,
+          'og:description': `View profile of ${user.name}`,
+          'og:type': 'profile',
+        },
+      },
+    };
+  },
+});
 
 /**
- * Product page function
+ * Product page function (without app context)
  */
-const ProductPage: PageFunction<{ slug: string }, ProductRouteContext> =
-  async (input) => {
+const ProductPage = contract.definePageWithoutContext<{ slug: string }, ProductRouteContext>({
+  handler: async ({ params }) => {
     // Preload product data (mock)
     const product = {
       id: '1',
-      slug: input.params.slug,
+      slug: params.slug,
       name: 'Laptop',
       price: 999,
       description: 'A great laptop',
     };
 
-    if (input.params.slug !== 'laptop') {
+    if (params.slug !== 'laptop') {
       return {
         type: 'not-found',
       };
@@ -181,14 +185,14 @@ const ProductPage: PageFunction<{ slug: string }, ProductRouteContext> =
         },
       },
     };
-  };
+  },
+});
 
 // ============================================================================
 // ROUTE DEFINITIONS
 // ============================================================================
 
-export const routes = createRoutes<AppRootContext>({
-  appContext: getRootContextFromInput,
+export const routes = contract.createRoutes({
   routes: {
     home: {
       path: '/',

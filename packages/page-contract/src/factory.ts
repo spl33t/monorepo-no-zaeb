@@ -2,7 +2,13 @@
  * Type-safe factory for creating routes
  */
 
-import type { PageFunction, PageInput, RouteContract } from './types';
+import type { PageFunction, PageInput, RouteContract, SeoDescriptor } from './types';
+import { handleSsrRequestFetch, type SsrFetchAdapterOptions } from './adapters/ssr-fetch';
+
+/**
+ * Generic component type (для React, Vue, и т.д.)
+ */
+type ComponentType<P = any> = (props: P) => any;
 
 /**
  * Route definition with path and page function
@@ -18,6 +24,13 @@ export interface RouteDefinition<Params = any, Ctx = any> {
 export type RoutesConfig<TRootContext = any> = {
   [key: string]: RouteDefinition<any, any>;
 };
+
+/**
+ * Extract union of all route context types from RoutesConfig
+ */
+export type ExtractRoutesContext<TRoutes extends RoutesConfig<any>> = {
+  [K in keyof TRoutes]: TRoutes[K] extends RouteDefinition<any, infer Ctx> ? Ctx : never;
+}[keyof TRoutes];
 
 /**
  * Options for createRoutes factory
@@ -37,9 +50,31 @@ export interface CreateRoutesOptions<TRootContext> {
 }
 
 /**
+ * Опции для создания handleRequest
+ */
+export interface CreateHandleRequestOptions<TRouteContext = unknown> {
+  /**
+   * Функция для рендеринга HTML страницы
+   * ctx - union всех типов контекстов роутов (автоматически выводится)
+   * request передается для доступа к URL
+   */
+  renderHtml: (ctx: TRouteContext, seo?: SeoDescriptor, request?: Request) => string | Promise<string>;
+  
+  /**
+   * Функция для рендеринга 404 страницы
+   */
+  render404?: () => string | Promise<string>;
+  
+  /**
+   * Функция для рендеринга страницы ошибки
+   */
+  renderError?: (error: unknown, status?: number) => string | Promise<string>;
+}
+
+/**
  * Result of createRoutes factory
  */
-export interface Routes<TRootContext> {
+export interface Routes<TRootContext, TRoutesConfig extends RoutesConfig<TRootContext> = RoutesConfig<TRootContext>> {
   /**
    * Array of route contracts for direct use
    */
@@ -68,6 +103,48 @@ export interface Routes<TRootContext> {
    * Get app context function
    */
   _getAppContext(): (input: PageInput) => TRootContext | Promise<TRootContext>;
+  
+  /**
+   * Create handleRequest function that knows about all routes
+   * ctx автоматически имеет тип union всех контекстов роутов
+   * 
+   * @example
+   * ```ts
+   * const handleRequest = routes.createHandleRequest({
+   *   renderHtml: async (ctx, seo, request) => {
+   *     // ctx имеет тип HomeRouteContext | ProfileRouteContext | ProductRouteContext
+   *     return renderReactApp(ctx, seo);
+   *   }
+   * });
+   * 
+   * // Использование
+   * const response = await handleRequest(request, vite);
+   * ```
+   */
+   createHandleRequest<TRouteContext = ExtractRoutesContext<TRoutesConfig>>(
+     options: CreateHandleRequestOptions<TRouteContext>
+   ): (request: Request) => Promise<Response>;
+  
+  /**
+   * Map routes to React Router Route components
+   * Type-safe маппинг роутов на React компоненты
+   * 
+   * @example
+   * ```tsx
+   * <Routes>
+   *   {routes._mapToView({
+   *     home: Home,
+   *     profile: Profile,
+   *     product: Product
+   *   }).map(({ key, path, Component }) => (
+   *     <Route key={key} path={path} element={<Component />} />
+   *   ))}
+   * </Routes>
+   * ```
+   */
+  _mapToView<TComponents extends Record<keyof TRoutesConfig, ComponentType<any>>>(
+    components: TComponents
+  ): Array<{ key: string; path: string; Component: ComponentType<any> }>;
 }
 
 /**
@@ -93,9 +170,12 @@ export interface Routes<TRootContext> {
  * });
  * ```
  */
-export function createRoutes<TRootContext = any>(
-  options: CreateRoutesOptions<TRootContext>
-): Routes<TRootContext> {
+export function createRoutes<
+  TRootContext = any,
+  TRoutesConfig extends RoutesConfig<TRootContext> = RoutesConfig<TRootContext>
+>(
+  options: CreateRoutesOptions<TRootContext> & { routes: TRoutesConfig }
+): Routes<TRootContext, TRoutesConfig> {
   const { routes: routesConfig, appContext } = options;
   
   // Convert routes config to RouteContract array
@@ -178,11 +258,80 @@ export function createRoutes<TRootContext = any>(
     return routeMap.get(key);
   }
   
+  /**
+   * Create handleRequest function that knows about all routes
+   */
+    function createHandleRequestFunction<TRouteContext = ExtractRoutesContext<TRoutesConfig>>(
+      options: CreateHandleRequestOptions<TRouteContext>
+    ): (request: Request) => Promise<Response> {
+      return async (request: Request): Promise<Response> => {
+      const pathname = new URL(request.url).pathname;
+      
+      const match = matchRoute(pathname);
+      if (!match) {
+        const notFoundHtml = options.render404
+          ? await options.render404()
+          : '<html><body><h1>404 Not Found</h1></body></html>';
+        return new Response(notFoundHtml, {
+          status: 404,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+          },
+        });
+      }
+      
+      // Создаем renderHtml с доступом к request через замыкание
+      // ctx будет иметь тип union всех контекстов роутов
+      const renderHtmlWithRequest = async (ctx: unknown, seo?: SeoDescriptor) => {
+        return options.renderHtml(ctx as TRouteContext, seo, request);
+      };
+      
+      // Используем адаптер для Fetch API
+      const adapterOptions: SsrFetchAdapterOptions = {
+        renderHtml: renderHtmlWithRequest,
+      };
+      
+      if (options.render404) {
+        adapterOptions.render404 = options.render404;
+      }
+      
+      if (options.renderError) {
+        adapterOptions.renderError = options.renderError;
+      }
+      
+      return handleSsrRequestFetch(match.route, request, adapterOptions);
+    };
+  }
+  
+  /**
+   * Map routes to React Router Route components
+   */
+  function mapToView<TComponents extends Record<keyof TRoutesConfig, ComponentType<any>>>(
+    components: TComponents
+  ): Array<{ key: string; path: string; Component: ComponentType<any> }> {
+    const result: Array<{ key: string; path: string; Component: ComponentType<any> }> = [];
+    
+    for (const [key, route] of routeMap.entries()) {
+      const Component = components[key as keyof TComponents];
+      if (Component !== undefined) {
+        result.push({
+          key,
+          path: route.path,
+          Component,
+        });
+      }
+    }
+    
+    return result;
+  }
+  
   return {
     _routes: routeContracts,
     _match: matchRoute,
     _getPaths: getPaths,
     _getRoute: getRoute,
     _getAppContext: () => appContext,
+    createHandleRequest: createHandleRequestFunction,
+    _mapToView: mapToView,
   };
 }

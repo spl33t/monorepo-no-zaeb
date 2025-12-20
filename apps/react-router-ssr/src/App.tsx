@@ -3,6 +3,7 @@ import { Home } from './pages/Home';
 import { Profile } from './pages/Profile';
 import { Product } from './pages/Product';
 import { Navigation } from './components/Navigation';
+import { routes } from './routes';
 import { useEffect, useState } from 'react';
 
 function NotFoundPage() {
@@ -31,11 +32,14 @@ export function App() {
       <h2>Test</h2>
       <button onClick={() => setCount(count + 1)}>Increment</button>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/profile/:id" element={<Profile />} />
-        <Route path="/product/:slug" element={<Product />} />
-        <Route path="/404" element={<NotFoundPage />} />
-        <Route path="*" element={<NotFoundPage />} />
+        {routes._mapToView({
+          home: Home,
+          profile: Profile,
+          product: Product,
+        }).map(({ key, path, Component }) => (
+          <Route key={key} path={path} element={<Component />} />
+        ))}
+  
       </Routes>
     </div>
   );
