@@ -8,7 +8,6 @@ import { renderToString } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom/server';
 import { App } from './App';
 import { RouteContextProvider } from './context/RouteContext';
-import { generateMetaTags, generateRouteContextScript } from './utils/seo';
 import { routes } from './routes';
 
 /**
@@ -17,36 +16,26 @@ import { routes } from './routes';
  * server.js применяет vite.transformIndexHtml только в dev режиме
  */
 export const handleRequest = routes.createHandleRequest({
-  renderHtml: async (ctx, seo?: any, request?: Request) => {
+  // Путь к клиентскому entry point
+  // В dev режиме Vite обработает это через transformIndexHtml
+  clientEntry: '/src/client.tsx',
+
+  renderHtml: async (ctx, _seo, request?: Request, pageInput?) => {
     // pathname получаем из request
     const pathname = request ? new URL(request.url).pathname : '/';
     
-    const seoTags = seo ? generateMetaTags(seo) : '';
-    const html = renderToString(
+    // Возвращаем только React контент (без HTML обертки)
+    // Библиотека автоматически оборачивает в полный HTML с SEO и routeContextScript
+    // SEO не передается в контекст - обновляется только при загрузке страницы
+    return renderToString(
       <StaticRouter location={pathname}>
-        <RouteContextProvider initialContext={ctx}>
+        <RouteContextProvider 
+          initialContext={ctx} 
+          initialPageInput={pageInput ?? null}
+        >
           <App />
         </RouteContextProvider>
       </StaticRouter>
     );
-    const routeContextScript = generateRouteContextScript(ctx);
-
-    // Возвращаем полный HTML (React + SEO + scripts)
-    // server.js применит vite.transformIndexHtml только в dev режиме
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${seoTags}
-  ${routeContextScript}
-</head>
-<body>
-  <div id="root">${html}</div>
-</body>
-</html>`.trim();
-  },
-  render404: () => '<html><body><h1>404 Not Found</h1></body></html>',
-  renderError: (error, status) =>
-    `<html><body><h1>Error ${status || 500}</h1><p>${error}</p></body></html>`,
+  }
 });

@@ -1,30 +1,11 @@
-import { useRouteContext } from '../context/RouteContext';
-import type { ProfileRouteContext } from '../routes';
+import { profilePage } from "../routes"
 
-export function Profile() {
-  const routeContext = useRouteContext<ProfileRouteContext>();
-
-  console.log('Profile component - routeContext:', routeContext);
-
-  if (!routeContext || !routeContext.user || !routeContext.posts) {
-    return <div>Loading...</div>;
+export const ProfilePage = profilePage.defineView(({ appContext, pageContext, params }) => {
+  if (pageContext.type === "ok") {
+    return <div>Profile {pageContext.data.profileId}</div>
   }
-
-  return (
-    <div>
-      <h1>Profile: {routeContext.user.name}</h1>
-      <p>Email: {routeContext.user.email}</p>
-      <h2>Posts</h2>
-      <ul>
-        {routeContext.posts.map((post) => (
-          <li key={post.id}>
-            <h3>{post.title}</h3>
-            <p>{post.content}</p>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-
+  if (pageContext.type === "not-found") {
+    return <div>{pageContext.data.message}</div>
+  }
+  return null;
+});

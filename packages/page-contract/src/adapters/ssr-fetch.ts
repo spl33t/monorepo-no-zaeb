@@ -3,7 +3,7 @@
  * Универсальный стандарт для веба - работает в Node.js, Edge Runtime, Cloudflare Workers и т.д.
  */
 
-import type { RouteContract, PageInput, SeoDescriptor } from '../types';
+import type { RouteContract, PageInput, PageViewInput, SeoDescriptor, PageResultType } from '../types';
 import { runPage } from '../runtime';
 import { extractParams, parseQuery } from '../utils';
 
@@ -15,7 +15,7 @@ export interface SsrFetchAdapterOptions {
    * Функция для рендеринга HTML страницы
    * request передается для доступа к URL и другим данным запроса
    */
-  renderHtml?: (ctx: unknown, seo?: SeoDescriptor, request?: Request) => string | Promise<string>;
+  renderHtml?: (ctx: unknown, seo?: SeoDescriptor, request?: Request, pageInput?: PageViewInput) => string | Promise<string>;
   
   /**
    * Функция для рендеринга 404 страницы
@@ -81,11 +81,19 @@ export async function handleSsrRequestFetch(
       });
 
     case 'not-found':
-      const notFoundHtml = options.render404
-        ? await options.render404()
+      // not-found обрабатывается самой страницей через renderHtml
+      // Если контекст не передан, используем дефолтный объект
+      const notFoundCtx = result.ctx ?? { notFound: true };
+      const notFoundPageInput: PageViewInput = {
+        ...input,
+        resultType: 'not-found' as PageResultType,
+      };
+      const notFoundHtml = options.renderHtml
+        ? await options.renderHtml(notFoundCtx, result.seo, request, notFoundPageInput)
         : '<html><body><h1>404 Not Found</h1></body></html>';
+      
       return new Response(notFoundHtml, {
-        status: 404,
+        status: result.status || 404,
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
         },
@@ -103,8 +111,12 @@ export async function handleSsrRequestFetch(
       });
 
     case 'ok':
+      const okPageInput: PageViewInput = {
+        ...input,
+        resultType: 'ok' as PageResultType,
+      };
       const html = options.renderHtml
-        ? await options.renderHtml(result.ctx, result.seo, request)
+        ? await options.renderHtml(result.ctx, result.seo, request, okPageInput)
         : JSON.stringify({ ctx: result.ctx, seo: result.seo });
       
       const contentType = options.renderHtml

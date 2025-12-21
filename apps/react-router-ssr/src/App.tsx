@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
-import { Home } from './pages/Home';
-import { Profile } from './pages/Profile';
-import { Product } from './pages/Product';
+import Home from './pages/Home';
+import Profile from './pages/Profile';
+import Product from './pages/Product';
 import { Navigation } from './components/Navigation';
 import { routes } from './routes';
 import { useEffect, useState } from 'react';
@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 function NotFoundPage() {
   return (
     <div>
-      <h1>404 - Not Found</h1>
+      <h1>4042 - Not Found</h1>
       <p>The page you are looking for does not exist.</p>
     </div>
   );
@@ -33,13 +33,16 @@ export function App() {
       <button onClick={() => setCount(count + 1)}>Increment</button>
       <Routes>
         {routes._mapToView({
-          home: Home,
-          profile: Profile,
-          product: Product,
-        }).map(({ key, path, Component }) => (
+          components: {
+            home: Home,
+            profile: Profile,
+            product: Product,
+          },
+          notFound: NotFoundPage,
+        }).routes.map(({ key, path, Component }) => (
           <Route key={key} path={path} element={<Component />} />
         ))}
-  
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </div>
   );

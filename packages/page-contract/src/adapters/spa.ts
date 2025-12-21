@@ -1,5 +1,51 @@
-import type { RouteContract, PageInput, PageResult } from '../types'
+import type { RouteContract, PageInput, PageViewInput, PageResult, PageResultType, SeoDescriptor } from '../types'
 import { runPage } from '../runtime'
+
+/**
+ * Обновляет SEO мета-теги в браузере
+ */
+function updateSeoMetadata(seo: SeoDescriptor): void {
+  if (typeof document === 'undefined') {
+    // Не в браузере - ничего не делаем
+    return;
+  }
+
+  // Обновляем title
+  if (seo.title) {
+    document.title = seo.title;
+  }
+
+  // Обновляем description
+  if (seo.description) {
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta');
+      metaDescription.setAttribute('name', 'description');
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute('content', seo.description);
+  }
+
+  // Обновляем другие meta теги
+  if (seo.meta) {
+    Object.entries(seo.meta).forEach(([name, content]) => {
+      // Определяем, это property (og:) или name
+      const isProperty = name.startsWith('og:') || name.startsWith('twitter:');
+      const attr = isProperty ? 'property' : 'name';
+      const selector = isProperty 
+        ? `meta[property="${name}"]` 
+        : `meta[name="${name}"]`;
+      
+      let metaTag = document.querySelector(selector);
+      if (!metaTag) {
+        metaTag = document.createElement('meta');
+        metaTag.setAttribute(attr, name);
+        document.head.appendChild(metaTag);
+      }
+      metaTag.setAttribute('content', String(content));
+    });
+  }
+}
 
 /**
  * Опции для SPA адаптера
@@ -17,6 +63,15 @@ export interface SpaAdapterOptions {
 }
 
 /**
+ * Результат SPA навигации
+ */
+export interface SpaNavigationResult<Ctx = unknown> {
+  ctx: Ctx | null
+  pageInput: PageViewInput | null
+  seo?: SeoDescriptor | null
+}
+
+/**
  * Обработчик SPA навигации
  * 
  * Интерпретирует результат PageFunction и выполняет соответствующие side-effects
@@ -24,61 +79,73 @@ export interface SpaAdapterOptions {
  * @param route - Контракт маршрута
  * @param input - Входные данные
  * @param options - Опции адаптера
- * @returns Контекст страницы или null (если был редирект/404)
+ * @returns Результат навигации с контекстом и PageViewInput (содержит resultType)
  */
 export async function handleSpaNavigation<Ctx = unknown>(
   route: RouteContract,
   input: PageInput,
   options: SpaAdapterOptions
-): Promise<Ctx | null> {
+): Promise<SpaNavigationResult<Ctx>> {
   const result = await runPage(route.page, input)
   
   switch (result.type) {
     case 'redirect':
       options.navigate(result.to)
-      return null
+      return {
+        ctx: null,
+        pageInput: {
+          ...input,
+          resultType: 'redirect',
+        },
+        seo: null,
+      }
 
     case 'not-found':
-      options.navigate(options.notFoundPath || '/404')
-      return null
+      // not-found обрабатывается самой страницей
+      // Возвращаем контекст (или дефолтный объект) чтобы страница могла показать правильный UI
+      // Если контекст не передан, используем дефолтный объект
+      const notFoundCtx = result.ctx ?? { notFound: true };
+      
+      // Обновляем SEO метаданные если есть
+      if (result.seo) {
+        updateSeoMetadata(result.seo);
+      }
+      
+      return {
+        ctx: notFoundCtx as Ctx,
+        pageInput: {
+          ...input,
+          resultType: 'not-found',
+        },
+        seo: result.seo ?? null,
+      }
 
     case 'error':
       // В SPA можно показать error boundary или перенаправить на error page
       options.navigate('/error')
-      return null
+      return {
+        ctx: null,
+        pageInput: {
+          ...input,
+          resultType: 'error',
+        },
+        seo: null,
+      }
 
     case 'ok':
       // Обновляем SEO метаданные в браузере
       if (result.seo) {
-        if (result.seo.title) {
-          document.title = result.seo.title
-        }
-        
-        if (result.seo.description) {
-          let metaDescription = document.querySelector('meta[name="description"]')
-          if (!metaDescription) {
-            metaDescription = document.createElement('meta')
-            metaDescription.setAttribute('name', 'description')
-            document.head.appendChild(metaDescription)
-          }
-          metaDescription.setAttribute('content', result.seo.description)
-        }
-        
-        // Обновляем другие meta теги
-        if (result.seo.meta) {
-          Object.entries(result.seo.meta).forEach(([name, content]) => {
-            let metaTag = document.querySelector(`meta[name="${name}"]`)
-            if (!metaTag) {
-              metaTag = document.createElement('meta')
-              metaTag.setAttribute('name', name)
-              document.head.appendChild(metaTag)
-            }
-            metaTag.setAttribute('content', String(content))
-          })
-        }
+        updateSeoMetadata(result.seo);
       }
       
-      return result.ctx as Ctx
+      return {
+        ctx: result.ctx as Ctx,
+        pageInput: {
+          ...input,
+          resultType: 'ok',
+        },
+        seo: result.seo ?? null,
+      }
   }
 }
 

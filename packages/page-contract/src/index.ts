@@ -21,6 +21,8 @@
 export type {
   PageResult,
   PageInput,
+  PageViewInput,
+  PageResultType,
   PageFunction,
   RouteContract,
   SeoDescriptor
@@ -31,15 +33,16 @@ export { runPage } from './runtime'
 
 // Утилиты
 export { extractParams, parseQuery } from './utils'
+export { generateMetaTags, generateRouteContextScript } from './utils/seo'
 
 // Главная фабрика для инициализации (рекомендуемый способ)
 export {
   createPageContract,
   type CreatePageContractOptions,
-  type PageContract
+  type PageContractFactory
 } from './contract-factory'
 
-// Фабрика routes (для прямого использования, если нужно)
+// Фабрика routes (используется внутри createPageContract, но экспортируем для прямого использования)
 export {
   createRoutes,
   type CreateRoutesOptions,
@@ -50,20 +53,18 @@ export {
   type ExtractRoutesContext
 } from './factory'
 
-// Фабрика page functions (для прямого использования, если нужно)
+// Фабрика page functions (используется внутри createPageContract, но экспортируем для прямого использования)
 export {
   definePage,
   type PageHandlerWithContext,
   type PageHandlerWithoutContext,
-  type DefinePageWithContextOptions
+  type DefinePageWithContextOptions,
+  type PageContract
 } from './page-factory'
 
 // SSR адаптеры
-export {
-  handleSsrRequest,
-  type SsrAdapterOptions
-} from './adapters/ssr'
-
+// handleSsrRequestFetch используется внутри createHandleRequest
+// Экспортируем для случаев, когда нужен прямой доступ к адаптеру
 export {
   handleSsrRequestFetch,
   type SsrFetchAdapterOptions

@@ -1,15 +1,8 @@
-import { useRouteContext } from '../context/RouteContext';
-import type { HomeRouteContext } from '../routes';
+import { homePage } from "../routes"
 
-export function Home() {
-  const routeContext = useRouteContext<HomeRouteContext>();
-
-  return (
-    <div>
-      <h1>Home</h1>
-      <p>{routeContext?.message || 'Loading...'}</p>
-    </div>
-  );
-}
-
-
+export const HomePage = homePage.defineView(({ appContext, pageContext }) => {
+  if(pageContext.type === "ok") {
+    return <div>Home. <br /> Current user: ${appContext.userId}</div>
+  }
+  return null;
+});

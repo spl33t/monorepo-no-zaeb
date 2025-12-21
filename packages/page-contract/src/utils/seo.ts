@@ -1,9 +1,12 @@
 /**
- * Утилиты для генерации SEO мета-тегов
+ * Утилиты для генерации SEO мета-тегов и скриптов
  */
 
-import type { SeoDescriptor } from '@monorepo/page-contract';
+import type { SeoDescriptor } from '../types';
 
+/**
+ * Генерирует HTML строку с SEO мета-тегами из SeoDescriptor
+ */
 export function generateMetaTags(seo: SeoDescriptor): string {
   const tags: string[] = [];
 
@@ -31,11 +34,25 @@ export function generateMetaTags(seo: SeoDescriptor): string {
   return tags.join('\n  ');
 }
 
-export function generateRouteContextScript(context: unknown): string {
-  const json = JSON.stringify(context).replace(/</g, '\\u003c');
-  return `<script>window.__ROUTE_CONTEXT__ = ${json};</script>`;
+/**
+ * Генерирует скрипт для передачи route context в браузер
+ */
+export function generateRouteContextScript(context: unknown, pageInput?: unknown): string {
+  const contextJson = JSON.stringify(context).replace(/</g, '\\u003c');
+  let script = `<script>window.__ROUTE_CONTEXT__ = ${contextJson};`;
+  
+  if (pageInput !== undefined) {
+    const pageInputJson = JSON.stringify(pageInput).replace(/</g, '\\u003c');
+    script += `\nwindow.__PAGE_INPUT__ = ${pageInputJson};`;
+  }
+  
+  script += `</script>`;
+  return script;
 }
 
+/**
+ * Экранирует HTML специальные символы
+ */
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {
     '&': '&amp;',
@@ -46,4 +63,5 @@ function escapeHtml(text: string): string {
   };
   return text.replace(/[&<>"']/g, (m) => map[m]);
 }
+
 

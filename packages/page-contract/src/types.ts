@@ -25,6 +25,9 @@ export type PageResult<Ctx = unknown> =
     }
   | {
       type: 'not-found'
+      ctx?: Ctx
+      seo?: SeoDescriptor
+      status?: number
     }
   | {
       type: 'error'
@@ -45,6 +48,27 @@ export interface PageInput<Params = any> {
     url: string
     method: string
   }
+}
+
+/**
+ * Тип результата выполнения PageFunction
+ */
+export type PageResultType = 'ok' | 'error' | 'not-found' | 'redirect'
+
+/**
+ * Расширенный PageInput для передачи в createView
+ * Содержит resultType для обработки состояний на странице
+ * 
+ * @template TResultTypes - Union типов результатов, которые может вернуть конкретный handler
+ *                         Если не указан, используется полный PageResultType
+ */
+export interface PageViewInput<Params = any, TResultTypes extends PageResultType = PageResultType> extends PageInput<Params> {
+  /**
+   * Тип результата выполнения PageFunction
+   * Позволяет странице обработать разные состояния
+   * Тип сужается на основе того, какие результаты может вернуть конкретный handler
+   */
+  resultType: TResultTypes
 }
 
 /**
