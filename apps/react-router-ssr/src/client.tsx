@@ -1,38 +1,16 @@
 /**
- * Client entry point for hydration
+ * Client entry point
  */
 
-import { hydrateRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { App } from './App';
-import { RouteContextProvider } from './context/RouteContext';
-import { SeoUpdater } from './components/SeoUpdater';
+import { createRoot } from 'react-dom/client';
+import { app } from './app';
 import './index.css';
 
-const rootElement = document.getElementById('root');
+// Определяем режим продакшн
+const isProd = process.env.NODE_ENV === 'production';
 
-if (!rootElement) {
-  throw new Error('Root element not found');
-}
+app.runClient({
+  createRoot,
+  isProd,
+});
 
-// Получаем initial context из window (инжектится сервером)
-const initialContext =
-  typeof window !== 'undefined' && (window as any).__ROUTE_CONTEXT__
-    ? (window as any).__ROUTE_CONTEXT__
-    : null;
-
-// Получаем initial pageInput из window (инжектится сервером)
-const initialPageInput =
-  typeof window !== 'undefined' && (window as any).__PAGE_INPUT__
-    ? (window as any).__PAGE_INPUT__
-    : null;
-
-hydrateRoot(
-  rootElement,
-  <BrowserRouter>
-    <RouteContextProvider initialContext={initialContext} initialPageInput={initialPageInput}>
-      <SeoUpdater />
-      <App />
-    </RouteContextProvider>
-  </BrowserRouter>
-);

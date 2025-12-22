@@ -198,11 +198,17 @@ export function initContract<AppCtx>(
       page: TPageFunction;
     }
   ): any {
-    pages.push(page as any);
+    // Создаем объект страницы с полем component, которое будет заполнено через defineView
+    const pageDefinition: any = {
+      path: page.path,
+      page: page.page,
+      component: undefined,
+    };
+    pages.push(pageDefinition);
     
     const defineView = (component: any) => {
-      // Просто возвращаем компонент как есть - маппинг будет происходить на уровне использования
-      // В будущем здесь можно добавить обертку для инжекции контекстов
+      // Сохраняем компонент в объект страницы
+      pageDefinition.component = component;
       return component;
     };
 
@@ -220,9 +226,11 @@ export function initContract<AppCtx>(
   function matchRoute(url: string) {
     for (const page of pages) {
       const params = matchPath(page.path, url);
-      if (params) return { page, params };
+      if (params) {
+        return { page, params, component: (page as any).component };
+      }
     }
-    return { page: null, params: {} };
+    return { page: null, params: {}, component: undefined };
   }
 
   const contract: any = {
@@ -237,4 +245,8 @@ export function initContract<AppCtx>(
 
   return contract;
 }
+
+// =======================
+// SPA Enhancement
+export { enhanceContractWithSPA, navigateTo } from './spa';
 

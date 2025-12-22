@@ -1,0 +1,11 @@
+{
+  "watch": ["src", "../../packages"],
+  "ext": "ts,tsx,js,jsx,json",
+  "ignore": ["src/**/*.test.ts", "src/**/*.spec.ts", "node_modules", "dist"],
+  "exec": "vite-node src/server.ts",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": 500
+}
+
