@@ -1,103 +1,53 @@
 // =======================
-// Минимальный runtime-контекст (для формирования AppContext сервером)
-export interface RuntimeContext {
+// Request объект с информацией о HTTP запросе
+export interface RequestContext {
+  method: string;
   url: string;
+  headers: Record<string, string | string[]>;
+  query: Record<string, string | string[]>;
+  cookies?: Record<string, string>;
+  userAgent?: string;
+  ip?: string;
+  host?: string;
+  protocol?: string;
 }
 
+
 // Результаты PageFunction
-// data доступно только если RouteCtx явно указан (не unknown по умолчанию)
-// Используем проверку: [RouteCtx] extends [unknown] проверяет точное равенство типов
-// Если RouteCtx = unknown, то [unknown] extends [RouteCtx] тоже true, что означает что это точно unknown
-type PageResultOk<RouteCtx> = [RouteCtx] extends [unknown]
-  ? [unknown] extends [RouteCtx]
-    ? { type: 'ok'; seo?: unknown }
-    : { type: 'ok'; data?: RouteCtx; seo?: unknown }
-  : { type: 'ok'; data?: RouteCtx; seo?: unknown };
-
-type PageResultNotFound<RouteCtx> = [RouteCtx] extends [unknown]
-  ? [unknown] extends [RouteCtx]
-    ? { type: 'not-found' }
-    : { type: 'not-found'; data?: RouteCtx }
-  : { type: 'not-found'; data?: RouteCtx };
-
-export type PageResult<RouteCtx = unknown> =
-  | PageResultOk<RouteCtx>
+type PageResult<RouteCtx = unknown> =
+  | { type: 'ok'; data?: RouteCtx; seo?: unknown }
   | { type: 'redirect'; to: string; status?: number }
-  | PageResultNotFound<RouteCtx>;
+  | { type: 'not-found'; data?: RouteCtx };
 
 // =======================
 // Type-safe params из path
-type ParamsFromPath<Path extends string> =
-  Path extends `${infer _Start}/:${infer Param}/${infer Rest}`
-    ? { [k in Param | keyof ParamsFromPath<`/${Rest}`>]: string }
-    : Path extends `${infer _Start}/:${infer Param}`
-    ? { [k in Param]: string }
-    : {};
+import type { ParamsFromUrl } from './path';
+
+// Используем ParamsFromUrl из path.ts для правильного извлечения параметров
+type ParamsFromPath<Path extends string> = ParamsFromUrl<Path>;
 
 // =======================
-// PageFunction с условием: AppCtx только если есть AppContext
+// PageFunction с автоматическим определением аргументов
 export type PageFunction<
   AppCtx,
   Params = Record<string, string>,
   RouteCtx = unknown,
   HasAppCtx extends boolean = true
 > = HasAppCtx extends true
-  ? (args: { appContext: AppCtx; params: Params }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>
-  : (args: { params: Params }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>;
+  ? [keyof Params] extends [never]
+    ? (args: { appContext: AppCtx; req: RequestContext }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>
+    : (args: { appContext: AppCtx; params: Params; req: RequestContext }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>
+  : [keyof Params] extends [never]
+    ? (args: { req: RequestContext }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>
+    : (args: { params: Params; req: RequestContext }) => PageResult<RouteCtx> | Promise<PageResult<RouteCtx>>;
 
 // Извлечение типа RouteCtx из PageFunction
-// Этот тип извлекает RouteCtx из возвращаемого значения PageFunction
 export type ExtractRouteCtx<T> = T extends (...args: any[]) => infer R
-  ? Awaited<R> extends PageResult<infer RouteCtx>
-    ? RouteCtx
+  ? Awaited<R> extends { type: 'ok'; data: infer D }
+    ? D
     : unknown
   : unknown;
 
-// Удаление свойств с типом never из объекта (включая опциональные свойства)
-// Проверяем как полные never свойства, так и опциональные (never | undefined)
-type OmitNever<T> = {
-  [K in keyof T as 
-    T[K] extends never 
-      ? never 
-      : [Exclude<T[K], undefined>] extends [never] 
-        ? never 
-        : K]: T[K];
-};
-
-// Нормализация типа результата - убирает data из вариантов, где оно не указано явно
-// И удаляет свойства с типом never
-type NormalizePageResult<T> = T extends { type: 'ok'; data: infer D }
-  ? { type: 'ok'; data: OmitNever<D>; seo?: unknown }
-  : T extends { type: 'ok' }
-  ? { type: 'ok'; seo?: unknown }
-  : T extends { type: 'not-found'; data: infer D }
-  ? { type: 'not-found'; data: OmitNever<D> }
-  : T extends { type: 'not-found' }
-  ? { type: 'not-found' }
-  : T;
-
-// Извлечение точного типа результата из PageFunction
-// Возвращает union всех возможных результатов функции, нормализованных (data только если указано, never свойства исключены)
-export type ExtractPageResult<TPageFunction> = TPageFunction extends (...args: any[]) => infer R
-  ? Awaited<R> extends infer Result
-    ? Result extends any
-      ? NormalizePageResult<Result>
-      : never
-    : never
-  : never;
-
-// React компонент (общий тип)
-type ReactComponent<P = any> = (props: P) => any;
-
-// Тип пропсов для компонента страницы
-export type PageViewProps<
-  AppCtx,
-  TPageContext,
-  Params,
-  HasAppCtx extends boolean
-> = HasAppCtx extends true
-  ? { appContext: AppCtx; pageContext: TPageContext; params: Params }
-  : { pageContext: TPageContext; params: Params };
 
 // PageDefinition
 export interface PageDefinition<
@@ -107,48 +57,35 @@ export interface PageDefinition<
   HasAppCtx extends boolean = true
 > {
   path: Path;
-  page: PageFunction<AppCtx, ParamsFromPath<Path>, RouteCtx, HasAppCtx>;
+  fn: PageFunction<AppCtx, ParamsFromPath<Path>, RouteCtx, HasAppCtx>;
 }
 
-// Результат definePage - объект с функцией defineView
-export interface PageWithView<
-  AppCtx,
-  Path extends string,
-  RouteCtx,
-  HasAppCtx extends boolean,
-  TPageFunction extends PageFunction<AppCtx, ParamsFromPath<Path>, RouteCtx, HasAppCtx> = PageFunction<AppCtx, ParamsFromPath<Path>, RouteCtx, HasAppCtx>
-> {
-  path: Path;
-  page: TPageFunction;
-  defineView: <TComponent extends ReactComponent<PageViewProps<AppCtx, ExtractPageResult<TPageFunction>, ParamsFromPath<Path>, HasAppCtx>>>(
-    component: TComponent
-  ) => ReactComponent<PageViewProps<AppCtx, ExtractPageResult<TPageFunction>, ParamsFromPath<Path>, HasAppCtx>>;
-}
+
 
 // =======================
 // Contract API
 export type Contract<AppCtx, HasAppCtx extends boolean = false> = {
-  // Перегрузка для извлечения типа из конкретной функции page
-  definePage<Path extends string, TPageFunction extends PageFunction<AppCtx, ParamsFromPath<Path>, any, HasAppCtx>>(
-    page: {
-      path: Path;
-      page: TPageFunction;
-    }
-  ): PageWithView<AppCtx, Path, ExtractRouteCtx<TPageFunction>, HasAppCtx, TPageFunction>;
-  
-  // Перегрузка с явным указанием RouteCtx
-  definePage<Path extends string, RouteCtx = unknown>(
-    page: PageDefinition<AppCtx, Path, RouteCtx, HasAppCtx>
-  ): PageWithView<AppCtx, Path, RouteCtx, HasAppCtx, PageDefinition<AppCtx, Path, RouteCtx, HasAppCtx>['page']>;
+  createRoute<
+    Path extends string
+  >(
+    path: Path,
+    fn: PageFunction<AppCtx, ParamsFromPath<Path>, any, HasAppCtx>
+  ): PageDefinition<AppCtx, Path, any, HasAppCtx>;
 
-  createRoutes(): PageDefinition<AppCtx, any, any, HasAppCtx>[];
+  createRoutes<
+    Routes extends Record<string, PageDefinition<AppCtx, any, any, any> | { path: string; fn: any }>
+  >(
+    routes: Routes
+  ): Record<string, PageDefinition<AppCtx, any, any, any>>;
+
+  getRoutes(): PageDefinition<AppCtx, any, any, HasAppCtx>[];
 
   matchRoute(url: string): {
     page: PageDefinition<AppCtx, any, any, HasAppCtx> | null;
     params: Record<string, string>;
   };
 } & (HasAppCtx extends true
-  ? { getAppContext: (ctx: RuntimeContext) => AppCtx | Promise<AppCtx> }
+  ? { getAppContext: (ctx: RequestContext) => AppCtx | Promise<AppCtx> }
   : {});
 
 // =======================
@@ -178,48 +115,58 @@ function matchPath(pathPattern: string, url: string): Record<string, string> | n
 // =======================
 // Перегрузки initContract
 export function initContract<AppCtx>(
-  config: { appContext: (ctx: RuntimeContext) => AppCtx | Promise<AppCtx> }
+  config: { appContext: (ctx: RequestContext) => AppCtx | Promise<AppCtx> }
 ): Contract<AppCtx, true>;
 
 export function initContract<AppCtx>(
-  config?: { appContext?: (ctx: RuntimeContext) => AppCtx | Promise<AppCtx> }
+  config?: { appContext?: (ctx: RequestContext) => AppCtx | Promise<AppCtx> }
 ): Contract<AppCtx, false>;
 
 // =======================
 // Реализация initContract
 export function initContract<AppCtx>(
-  config?: { appContext?: (ctx: RuntimeContext) => AppCtx | Promise<AppCtx> }
+  config?: { appContext?: (ctx: RequestContext) => AppCtx | Promise<AppCtx> }
 ) {
   const pages: PageDefinition<AppCtx, any, any, any>[] = [];
 
-  function definePage<Path extends string, TPageFunction = any>(
-    page: {
-      path: Path;
-      page: TPageFunction;
-    }
-  ): any {
-    // Создаем объект страницы с полем component, которое будет заполнено через defineView
-    const pageDefinition: any = {
-      path: page.path,
-      page: page.page,
-      component: undefined,
+  function createRoute<
+    Path extends string
+  >(
+    path: Path,
+    fn: PageFunction<AppCtx, ParamsFromPath<Path>, any, any>
+  ): PageDefinition<AppCtx, Path, any, any> {
+    const pageDefinition: PageDefinition<AppCtx, Path, any, any> = {
+      path,
+      fn: fn as any,
     };
     pages.push(pageDefinition);
-    
-    const defineView = (component: any) => {
-      // Сохраняем компонент в объект страницы
-      pageDefinition.component = component;
-      return component;
-    };
-
-    return {
-      path: page.path,
-      page: page.page,
-      defineView,
-    };
+    return pageDefinition;
   }
 
-  function createRoutes() {
+  function createRoutes<
+    Routes extends Record<string, PageDefinition<AppCtx, any, any, any> | { path: string; fn: any }>
+  >(
+    routes: Routes
+  ): Record<string, PageDefinition<AppCtx, any, any, any>> {
+    const result: any = {};
+
+    for (const [key, route] of Object.entries(routes)) {
+      const r = route as any;
+      let pageDefinition: PageDefinition<AppCtx, any, any, any>;
+
+      // Определяем fn и path в зависимости от формата объекта
+      const fn = r.fn || r.page;
+      const path = r.path;
+
+      pageDefinition = { path, fn };
+      pages.push(pageDefinition);
+      result[key] = pageDefinition;
+    }
+
+    return result;
+  }
+
+  function getRoutes() {
     return pages;
   }
 
@@ -227,15 +174,16 @@ export function initContract<AppCtx>(
     for (const page of pages) {
       const params = matchPath(page.path, url);
       if (params) {
-        return { page, params, component: (page as any).component };
+        return { page, params };
       }
     }
-    return { page: null, params: {}, component: undefined };
+    return { page: null, params: {} };
   }
 
   const contract: any = {
-    definePage,
+    createRoute,
     createRoutes,
+    getRoutes,
     matchRoute,
   };
 
@@ -248,5 +196,9 @@ export function initContract<AppCtx>(
 
 // =======================
 // SPA Enhancement
-export { enhanceContractWithSPA, navigateTo } from './spa';
+export { updateTitleOnNavigation } from './spa';
+
+// =======================
+// SEO Gateway
+export { createSeoServer } from './seo-gateway';
 
