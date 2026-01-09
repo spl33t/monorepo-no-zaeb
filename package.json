@@ -8,7 +8,7 @@
     "create:package": "node tools/create-package.js",
     "create:docker-compose": "node tools/create-docker-compose.js",
     "--------------------------------Docker--------------------------------": "",
-    "docker:up": "docker compose up -d --build",
+    "docker:up": "cross-env DOCKER_TARGET=production docker compose up --build",
     "docker:up:watch": "docker compose up --watch --build",
     "docker:up:attach": "docker compose up --build",
     "docker:build": "docker compose build",

@@ -1,0 +1,18 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
+    "clean": "rimraf dist",
+    "dev": "nodemon --exec ts-node --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "--------------------------------Docker commands--------------------------------": "",
+    "docker:build": "node ../../tools/docker-helper.js build Dockerfile test",
+    "docker:up": "node ../../tools/docker-helper.js up Dockerfile test 3000 -d",
+    "docker:up:attach": "node ../../tools/docker-helper.js up Dockerfile test 3000",
+    "docker:attach": "docker attach test",
+    "docker:down": "node ../../tools/docker-helper.js down test",
+    "docker:logs": "docker logs -f test"
+  }
+}

@@ -3,10 +3,12 @@ services:
     build:
       context: .
       dockerfile: apps/test/Dockerfile
-      target: development
+      target: '${DOCKER_TARGET:-development}'
     container_name: test
     ports:
       - 3000:3000
+    env_file:
+      - apps/test/.env
     restart: unless-stopped
     develop:
       watch:

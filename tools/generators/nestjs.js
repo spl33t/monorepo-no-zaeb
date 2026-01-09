@@ -149,10 +149,13 @@ export class AppService {
 # Copy this file to .env and set your values
 
 PORT=${port}
-HOST=0.0.0.0
-NODE_ENV=development
 `;
   fs.writeFileSync(path.join(appDir, '.env.example'), envExample);
+  
+  // .env (создаем сразу с теми же значениями)
+  const env = `PORT=${port}
+`;
+  fs.writeFileSync(path.join(appDir, '.env'), env);
 
   // Dockerfile (multi-stage: production + development)
   const dockerfile = `# Build stage
@@ -272,6 +275,7 @@ README.md
       'package.json',
       'tsconfig.json',
       'nodemon.json',
+      '.env',
       '.env.example',
       'Dockerfile',
       '.dockerignore'

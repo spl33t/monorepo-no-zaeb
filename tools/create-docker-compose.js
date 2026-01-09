@@ -259,52 +259,55 @@ function getAvailableApps() {
 }
 
 /**
- * Получает порт приложения из .env.example или Dockerfile
+ * Проверяет обязательные переменные в .env файле
+ */
+function validateEnvFile(appName) {
+  const appDir = path.join(process.cwd(), 'apps', appName);
+  const envPath = path.join(appDir, '.env');
+  
+  if (!fs.existsSync(envPath)) {
+    throw new Error(`Файл apps/${appName}/.env не найден. Создайте его на основе apps/${appName}/.env.example`);
+  }
+  
+  const content = fs.readFileSync(envPath, 'utf8');
+  const requiredVars = ['PORT'];
+  const missingVars = [];
+  
+  for (const varName of requiredVars) {
+    const regex = new RegExp(`^${varName}=`, 'm');
+    if (!regex.test(content)) {
+      missingVars.push(varName);
+    }
+  }
+  
+  if (missingVars.length > 0) {
+    throw new Error(`В файле apps/${appName}/.env отсутствуют обязательные переменные: ${missingVars.join(', ')}`);
+  }
+}
+
+/**
+ * Получает порт приложения из .env файла
  */
 function getAppPort(appName) {
   try {
     const appDir = path.join(process.cwd(), 'apps', appName);
     
-    // Пробуем получить из .env.example
-    const envExamplePath = path.join(appDir, '.env.example');
-    if (fs.existsSync(envExamplePath)) {
-      const content = fs.readFileSync(envExamplePath, 'utf8');
-      const portMatch = content.match(/^PORT=(\d+)/m);
-      if (portMatch) {
-        return portMatch[1];
-      }
+    // Проверяем наличие и валидность .env файла
+    validateEnvFile(appName);
+    
+    // Пробуем получить из .env файла
+    const envPath = path.join(appDir, '.env');
+    const content = fs.readFileSync(envPath, 'utf8');
+    const portMatch = content.match(/^PORT=(\d+)/m);
+    if (portMatch) {
+      return portMatch[1];
     }
 
-    // Пробуем получить из Dockerfile
-    const dockerfilePath = path.join(appDir, 'Dockerfile');
-    if (fs.existsSync(dockerfilePath)) {
-      const content = fs.readFileSync(dockerfilePath, 'utf8');
-      const portMatch = content.match(/ENV PORT=(\d+)/);
-      if (portMatch) {
-        return portMatch[1];
-      }
-      const exposeMatch = content.match(/EXPOSE (\d+)/);
-      if (exposeMatch) {
-        return exposeMatch[1];
-      }
-    }
-
-    // Пробуем получить из docker:run команды в package.json
-    const packageJsonPath = path.join(appDir, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      if (packageJson.scripts && packageJson.scripts['docker:run']) {
-        const portMatch = packageJson.scripts['docker:run'].match(/-p (\d+):(\d+)/);
-        if (portMatch) {
-          return portMatch[1];
-        }
-      }
-    }
-
-    return '3000'; // По умолчанию
+    // Если PORT не найден в .env (хотя должен быть по валидации), это ошибка
+    throw new Error(`В файле apps/${appName}/.env переменная PORT не содержит корректное значение (ожидается PORT=число)`);
   } catch (error) {
-    console.warn(`⚠️  Ошибка при получении порта для ${appName}: ${error.message}`);
-    return '3000';
+    // Пробрасываем все ошибки дальше
+    throw error;
   }
 }
 
@@ -346,7 +349,7 @@ function getAppType(appName) {
  * Создает конфигурацию сервиса для docker-compose
  */
 function createServiceConfig(appName, port, appType) {
-  // Используем Dockerfile с таргетами (production по умолчанию)
+  // Используем Dockerfile с таргетами (development по умолчанию)
   const dockerfilePath = `apps/${appName}/Dockerfile`;
   const contextPath = '.';
   
@@ -354,10 +357,13 @@ function createServiceConfig(appName, port, appType) {
     build: {
       context: contextPath,
       dockerfile: dockerfilePath,
-      target: 'production'
+      target: '${DOCKER_TARGET:-development}'
     },
     container_name: appName,
     ports: [`${port}:${port}`],
+    env_file: [
+      `apps/${appName}/.env`
+    ],
     restart: 'unless-stopped',
     develop: {
       watch: [
@@ -505,8 +511,9 @@ async function createDockerCompose() {
   console.log(`✅ Приложение "${appName}" добавлено в docker-compose.yml`);
   console.log(`\n📝 Файл сохранен: ${composePath}`);
   console.log('\n💡 Доступные команды:');
-  console.log(`   docker compose up -d ${appName}                    # Запустить сервис (production, фоновый режим)`);
+  console.log(`   docker compose up -d ${appName}                    # Запустить сервис (development, фоновый режим)`);
   console.log(`   docker compose up --watch ${appName}                # Запустить с watch mode (development)`);
+  console.log(`   DOCKER_TARGET=production docker compose up ${appName}  # Запустить с production таргетом`);
   console.log(`   docker compose build --target development ${appName} # Собрать development образ`);
   console.log(`   docker compose build --target production ${appName}   # Собрать production образ`);
   console.log(`   docker compose logs -f ${appName}                   # Просмотр логов`);
@@ -517,8 +524,9 @@ async function createDockerCompose() {
   console.log('   - Директории packages/ - синхронизация');
   console.log('   - Файле окружения (.env) - пересборка');
   console.log('\n📝 Примечание:');
-  console.log('   - По умолчанию используется таргет "production" из Dockerfile');
-  console.log('   - Для development используйте watch mode или соберите с таргетом "development"');
+  console.log('   - По умолчанию используется таргет "development" из Dockerfile');
+  console.log('   - Переопределить таргет: DOCKER_TARGET=production docker compose up');
+  console.log('   - Для production используйте переменную DOCKER_TARGET=production');
   console.log('   - Watch mode автоматически синхронизирует изменения и пересобирает контейнеры');
 
   rl.close();
