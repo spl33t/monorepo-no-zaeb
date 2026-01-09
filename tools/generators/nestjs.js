@@ -14,9 +14,9 @@ function createNestJsApp(appDir, name, port = '3000') {
     version: '1.0.0',
     main: './dist/index.js',
     scripts: {
-      build: 'esbuild src/main.ts --bundle --platform=node --outfile=dist/index.js --packages=external',
+      build: 'node esbuild.config.js',
       clean: 'rimraf dist',
-      dev: 'nodemon --exec ts-node --transpile-only src/main.ts',
+      dev: 'nodemon',
       start: 'node dist/index.js',
       '--------------------------------Docker commands--------------------------------': '',
       'docker:build': `node ../../tools/docker-helper.js build Dockerfile ${name}`,
@@ -55,6 +55,22 @@ function createNestJsApp(appDir, name, port = '3000') {
     path.join(appDir, 'tsconfig.json'),
     JSON.stringify(tsconfig, null, 2)
   );
+
+  // esbuild.config.js
+  const esbuildConfig = `const esbuild = require('esbuild');
+
+esbuild.build({
+  entryPoints: ['src/main.ts'],
+  bundle: true,
+  platform: 'node',
+  outfile: 'dist/index.js',
+  packages: 'external',
+  define: {
+    'process.env.NODE_ENV': '"production"'
+  }
+}).catch(() => process.exit(1));
+`;
+  fs.writeFileSync(path.join(appDir, 'esbuild.config.js'), esbuildConfig);
 
   // nodemon.json
   const nodemonConfig = {
@@ -274,6 +290,7 @@ README.md
       '  └── app.service.ts',
       'package.json',
       'tsconfig.json',
+      'esbuild.config.js',
       'nodemon.json',
       '.env',
       '.env.example',
