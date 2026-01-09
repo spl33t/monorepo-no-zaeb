@@ -200,7 +200,7 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS production
 
-# Port argument (can be overridden at build time)
+# Port argument (default value, can be overridden via .env file in docker-compose)
 ARG PORT=${port}
 
 WORKDIR /app
@@ -221,7 +221,7 @@ COPY --from=builder /app/apps/${name}/dist ./apps/${name}/dist
 
 WORKDIR /app/apps/${name}
 
-# Set port from ARG (can be overridden via environment variable in docker-compose)
+# Set port from ARG (can be overridden via .env file in docker-compose)
 ENV PORT=\${PORT}
 
 # Expose port (uses same value as ENV PORT)
@@ -233,7 +233,7 @@ CMD ["node", "dist/index.js"]
 # Development stage
 FROM node:20-alpine AS development
 
-# Port argument (can be overridden at build time)
+# Port argument (default value, can be overridden via .env file in docker-compose)
 ARG PORT=${port}
 
 WORKDIR /app
@@ -254,9 +254,8 @@ COPY apps/${name} ./apps/${name}/
 
 WORKDIR /app/apps/${name}
 
-# Set port from ARG (can be overridden via environment variable)
+# Set port from ARG (can be overridden via .env file in docker-compose)
 ENV PORT=\${PORT}
-ENV NODE_ENV=development
 
 # Expose port (uses same value as ENV PORT)
 EXPOSE \${PORT}

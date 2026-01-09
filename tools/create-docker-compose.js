@@ -376,10 +376,6 @@ function createServiceConfig(appName, port, appType) {
           action: 'sync',
           path: `./packages`,
           target: `/app/packages`
-        },
-        {
-          action: 'rebuild',
-          path: `./.env`
         }
       ]
     }
@@ -522,7 +518,6 @@ async function createDockerCompose() {
   console.log('\n🔄 Watch Mode отслеживает изменения в:');
   console.log(`   - Директории приложения (apps/${appName}/) - синхронизация`);
   console.log('   - Директории packages/ - синхронизация');
-  console.log('   - Файле окружения (.env) - пересборка');
   console.log('\n📝 Примечание:');
   console.log('   - По умолчанию используется таргет "development" из Dockerfile');
   console.log('   - Переопределить таргет: DOCKER_TARGET=production docker compose up');
