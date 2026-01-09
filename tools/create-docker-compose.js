@@ -188,6 +188,13 @@ function stringifyYaml(obj) {
                   result += `        - ${item}\n`;
                 }
               });
+            } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+              // Вложенный объект (например, build.args)
+              result += `      ${k}:\n`;
+              for (const [nk, nv] of Object.entries(v)) {
+                const val = typeof nv === 'string' && (nv.includes(':') || nv.includes(' ')) ? `'${nv}'` : nv;
+                result += `        ${nk}: ${val}\n`;
+              }
             } else {
               // Экранируем значения если нужно
               const val = typeof v === 'string' && (v.includes(':') || v.includes(' ')) ? `'${v}'` : v;
@@ -255,102 +262,126 @@ function getAvailableApps() {
  * Получает порт приложения из .env.example или Dockerfile
  */
 function getAppPort(appName) {
-  const appDir = path.join(process.cwd(), 'apps', appName);
-  
-  // Пробуем получить из .env.example
-  const envExamplePath = path.join(appDir, '.env.example');
-  if (fs.existsSync(envExamplePath)) {
-    const content = fs.readFileSync(envExamplePath, 'utf8');
-    const portMatch = content.match(/^PORT=(\d+)/m);
-    if (portMatch) {
-      return portMatch[1];
-    }
-  }
-
-  // Пробуем получить из Dockerfile
-  const dockerfilePath = path.join(appDir, 'Dockerfile');
-  if (fs.existsSync(dockerfilePath)) {
-    const content = fs.readFileSync(dockerfilePath, 'utf8');
-    const portMatch = content.match(/ENV PORT=(\d+)/);
-    if (portMatch) {
-      return portMatch[1];
-    }
-    const exposeMatch = content.match(/EXPOSE (\d+)/);
-    if (exposeMatch) {
-      return exposeMatch[1];
-    }
-  }
-
-  // Пробуем получить из docker:run команды в package.json
-  const packageJsonPath = path.join(appDir, 'package.json');
-  if (fs.existsSync(packageJsonPath)) {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    if (packageJson.scripts && packageJson.scripts['docker:run']) {
-      const portMatch = packageJson.scripts['docker:run'].match(/-p (\d+):(\d+)/);
+  try {
+    const appDir = path.join(process.cwd(), 'apps', appName);
+    
+    // Пробуем получить из .env.example
+    const envExamplePath = path.join(appDir, '.env.example');
+    if (fs.existsSync(envExamplePath)) {
+      const content = fs.readFileSync(envExamplePath, 'utf8');
+      const portMatch = content.match(/^PORT=(\d+)/m);
       if (portMatch) {
         return portMatch[1];
       }
     }
-  }
 
-  return '3000'; // По умолчанию
+    // Пробуем получить из Dockerfile
+    const dockerfilePath = path.join(appDir, 'Dockerfile');
+    if (fs.existsSync(dockerfilePath)) {
+      const content = fs.readFileSync(dockerfilePath, 'utf8');
+      const portMatch = content.match(/ENV PORT=(\d+)/);
+      if (portMatch) {
+        return portMatch[1];
+      }
+      const exposeMatch = content.match(/EXPOSE (\d+)/);
+      if (exposeMatch) {
+        return exposeMatch[1];
+      }
+    }
+
+    // Пробуем получить из docker:run команды в package.json
+    const packageJsonPath = path.join(appDir, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      if (packageJson.scripts && packageJson.scripts['docker:run']) {
+        const portMatch = packageJson.scripts['docker:run'].match(/-p (\d+):(\d+)/);
+        if (portMatch) {
+          return portMatch[1];
+        }
+      }
+    }
+
+    return '3000'; // По умолчанию
+  } catch (error) {
+    console.warn(`⚠️  Ошибка при получении порта для ${appName}: ${error.message}`);
+    return '3000';
+  }
 }
 
 /**
  * Определяет тип приложения (nodejs/nestjs/vite)
  */
 function getAppType(appName) {
-  const appDir = path.join(process.cwd(), 'apps', appName);
-  const packageJsonPath = path.join(appDir, 'package.json');
-  
-  if (fs.existsSync(packageJsonPath)) {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  try {
+    const appDir = path.join(process.cwd(), 'apps', appName);
+    const packageJsonPath = path.join(appDir, 'package.json');
     
-    // Проверяем зависимости
-    if (packageJson.dependencies) {
-      if (packageJson.dependencies['@nestjs/core']) {
-        return 'nestjs';
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+      
+      // Проверяем зависимости
+      if (packageJson.dependencies) {
+        if (packageJson.dependencies['@nestjs/core']) {
+          return 'nestjs';
+        }
+        if (packageJson.dependencies['react'] || packageJson.dependencies['react-dom']) {
+          return 'vite';
+        }
       }
-      if (packageJson.dependencies['react'] || packageJson.dependencies['react-dom']) {
+      
+      // Проверяем наличие vite.config.ts
+      if (fs.existsSync(path.join(appDir, 'vite.config.ts'))) {
         return 'vite';
       }
     }
-    
-    // Проверяем наличие vite.config.ts
-    if (fs.existsSync(path.join(appDir, 'vite.config.ts'))) {
-      return 'vite';
-    }
-  }
 
-  return 'nodejs';
+    return 'nodejs';
+  } catch (error) {
+    console.warn(`⚠️  Ошибка при определении типа для ${appName}: ${error.message}`);
+    return 'nodejs';
+  }
 }
 
 /**
  * Создает конфигурацию сервиса для docker-compose
  */
 function createServiceConfig(appName, port, appType) {
-  // По умолчанию используем Dockerfile (production)
+  // Используем Dockerfile с таргетами (production по умолчанию)
   const dockerfilePath = `apps/${appName}/Dockerfile`;
   const contextPath = '.';
   
   const service = {
     build: {
       context: contextPath,
-      dockerfile: dockerfilePath
+      dockerfile: dockerfilePath,
+      target: 'production'
     },
     container_name: appName,
     ports: [`${port}:${port}`],
-    environment: [
-      `PORT=${port}`,
-      'NODE_ENV=production'
-    ],
-    restart: 'unless-stopped'
+    restart: 'unless-stopped',
+    develop: {
+      watch: [
+        {
+          action: 'sync',
+          path: `./apps/${appName}`,
+          target: `/app/apps/${appName}`
+        },
+        {
+          action: 'sync',
+          path: `./packages`,
+          target: `/app/packages`
+        },
+        {
+          action: 'rebuild',
+          path: `./.env`
+        }
+      ]
+    }
   };
 
   // Для Vite приложений порт всегда 80
   if (appType === 'vite') {
     service.ports = [`${port}:80`];
-    delete service.environment; // Vite не использует PORT env
   }
 
   return service;
@@ -378,7 +409,16 @@ async function createDockerCompose() {
   }
 
   // Получаем список доступных приложений
-  const availableApps = getAvailableApps();
+  let availableApps;
+  try {
+    availableApps = getAvailableApps();
+    console.log(`🔍 Найдено приложений: ${availableApps.length}`);
+  } catch (error) {
+    console.error('❌ Ошибка при получении списка приложений:', error.message);
+    console.error(error.stack);
+    rl.close();
+    process.exit(1);
+  }
   
   if (availableApps.length === 0) {
     console.error('❌ Не найдено приложений с Dockerfile в папке apps/');
@@ -407,16 +447,28 @@ async function createDockerCompose() {
 
   console.log('Доступные приложения для добавления:');
   appsToAdd.forEach((app, index) => {
-    const port = getAppPort(app);
-    const type = getAppType(app);
-    console.log(`  ${index + 1}. ${app} (порт: ${port}, тип: ${type})`);
+    try {
+      const port = getAppPort(app);
+      const type = getAppType(app);
+      console.log(`  ${index + 1}. ${app} (порт: ${port}, тип: ${type})`);
+    } catch (error) {
+      console.log(`  ${index + 1}. ${app} (ошибка получения информации: ${error.message})`);
+    }
   });
 
   // Выбор приложения
-  const choice = await question(`\nВыберите приложение для добавления [1-${appsToAdd.length}]: `);
+  let choice;
+  try {
+    choice = await question(`\nВыберите приложение для добавления [1-${appsToAdd.length}]: `);
+  } catch (error) {
+    console.error('❌ Ошибка при чтении ввода:', error.message);
+    rl.close();
+    process.exit(1);
+  }
+  
   const appIndex = parseInt(choice) - 1;
 
-  if (appIndex < 0 || appIndex >= appsToAdd.length) {
+  if (isNaN(appIndex) || appIndex < 0 || appIndex >= appsToAdd.length) {
     console.error(`❌ Неверный выбор. Введите число от 1 до ${appsToAdd.length}`);
     rl.close();
     process.exit(1);
@@ -428,102 +480,46 @@ async function createDockerCompose() {
 
   console.log(`\n📦 Добавляю приложение "${appName}" (порт: ${port}, тип: ${appType})...`);
 
-  // Создаем конфигурацию сервиса для production
-  const serviceConfig = createServiceConfig(appName, port, appType);
+  // Создаем конфигурацию сервиса
+  let serviceConfig;
+  try {
+    serviceConfig = createServiceConfig(appName, port, appType);
+  } catch (error) {
+    console.error(`❌ Ошибка при создании конфигурации сервиса: ${error.message}`);
+    rl.close();
+    process.exit(1);
+  }
+  
   compose.services[appName] = serviceConfig;
 
-  // Сохраняем production docker-compose.yml
-  const yamlContent = stringifyYaml(compose);
-  fs.writeFileSync(composePath, yamlContent);
-
-  // Создаем/обновляем dev версию с Dockerfile.dev
-  const composeDevPath = path.join(process.cwd(), 'docker-compose.dev.yml');
-  
-  // Всегда создаем dev файл на основе production (синхронизация)
-  const composeDev = JSON.parse(JSON.stringify(compose));
-  
-  // Синхронизируем другие секции
-  if (compose.networks) composeDev.networks = compose.networks;
-  if (compose.volumes) composeDev.volumes = compose.volumes;
-  
-  // Обновляем все сервисы для использования Dockerfile.dev и добавляем watch
-  for (const [serviceName, service] of Object.entries(composeDev.services)) {
-    if (service.build && service.build.dockerfile) {
-      // Меняем Dockerfile на Dockerfile.dev
-      const currentDockerfile = service.build.dockerfile;
-      if (currentDockerfile.endsWith('Dockerfile') && !currentDockerfile.endsWith('Dockerfile.dev')) {
-        service.build.dockerfile = currentDockerfile.replace(/Dockerfile$/, 'Dockerfile.dev');
-      }
-      
-      // Меняем NODE_ENV на development
-      if (service.environment) {
-        const envIndex = service.environment.findIndex(e => typeof e === 'string' && e.startsWith('NODE_ENV='));
-        if (envIndex >= 0) {
-          service.environment[envIndex] = 'NODE_ENV=development';
-        } else {
-          service.environment.push('NODE_ENV=development');
-        }
-      } else {
-        service.environment = ['NODE_ENV=development'];
-      }
-      
-      // Добавляем develop.watch для dev режима
-      service.develop = {
-        watch: [
-          {
-            action: 'sync',
-            path: `./apps/${serviceName}`,
-            target: `/app/apps/${serviceName}`
-          },
-          {
-            action: 'sync',
-            path: `./packages`,
-            target: `/app/packages`
-          },
-          {
-            action: 'rebuild',
-            path: `./.env`
-          }
-        ]
-      };
-    }
+  // Сохраняем docker-compose.yml
+  try {
+    const yamlContent = stringifyYaml(compose);
+    fs.writeFileSync(composePath, yamlContent);
+  } catch (error) {
+    console.error(`❌ Ошибка при сохранении файла: ${error.message}`);
+    rl.close();
+    process.exit(1);
   }
 
-  // Сохраняем dev docker-compose.dev.yml
-  const yamlDevContent = stringifyYaml(composeDev);
-  fs.writeFileSync(composeDevPath, yamlDevContent);
-
   console.log(`✅ Приложение "${appName}" добавлено в docker-compose.yml`);
-  console.log(`\n📝 Файлы сохранены:`);
-  console.log(`   - ${composePath} (production, использует Dockerfile)`);
-  console.log(`   - ${composeDevPath} (development, использует Dockerfile.dev)`);
-  console.log('\n💡 Доступные npm команды:');
-  console.log('\n📦 Production:');
-  console.log('   npm run docker:up              # Запустить все сервисы (фоновый режим)');
-  console.log('   npm run docker:down             # Остановить все сервисы');
-  console.log('   npm run docker:logs             # Просмотр логов');
-  console.log('   npm run docker:build            # Пересобрать образы');
-  console.log('   npm run docker:ps               # Показать статус контейнеров');
-  console.log('\n🔧 Development:');
-  console.log('   npm run docker:up:watch         # Запустить с watch mode + логи');
-  console.log('   npm run docker:down:dev         # Остановить все сервисы');
-  console.log('   npm run docker:logs:dev         # Просмотр логов');
-  console.log('   npm run docker:build:dev         # Пересобрать образы');
-  console.log('   npm run docker:ps:dev           # Показать статус контейнеров');
-  console.log('\n💡 Прямые docker compose команды:');
-  console.log(`   docker compose up -d ${appName}  # Запустить конкретный сервис (production)`);
-  console.log(`   docker compose -f docker-compose.dev.yml up --watch ${appName}  # Watch mode (development)`);
-  console.log(`   docker compose logs -f ${appName}  # Логи конкретного сервиса`);
-  console.log('\n📝 Режимы работы:');
-  console.log('   - Production: использует docker-compose.yml + Dockerfile (multi-stage build)');
-  console.log('   - Development: использует docker-compose.dev.yml + Dockerfile.dev (npm run dev)');
-  console.log('   - Watch mode автоматически использует development режим');
+  console.log(`\n📝 Файл сохранен: ${composePath}`);
+  console.log('\n💡 Доступные команды:');
+  console.log(`   docker compose up -d ${appName}                    # Запустить сервис (production, фоновый режим)`);
+  console.log(`   docker compose up --watch ${appName}                # Запустить с watch mode (development)`);
+  console.log(`   docker compose build --target development ${appName} # Собрать development образ`);
+  console.log(`   docker compose build --target production ${appName}   # Собрать production образ`);
+  console.log(`   docker compose logs -f ${appName}                   # Просмотр логов`);
+  console.log(`   docker compose ps                                   # Показать статус контейнеров`);
+  console.log(`   docker compose down                                 # Остановить все сервисы`);
   console.log('\n🔄 Watch Mode отслеживает изменения в:');
-  console.log(`   - Директории приложения (apps/${appName}/) - пересборка`);
+  console.log(`   - Директории приложения (apps/${appName}/) - синхронизация`);
+  console.log('   - Директории packages/ - синхронизация');
   console.log('   - Файле окружения (.env) - пересборка');
-  console.log('   - Директории packages/ - синхронизация (без пересборки)');
-  console.log('\n📝 Примечание: Watch mode автоматически пересобирает и перезапускает');
-  console.log('   контейнеры при изменении отслеживаемых файлов.');
+  console.log('\n📝 Примечание:');
+  console.log('   - По умолчанию используется таргет "production" из Dockerfile');
+  console.log('   - Для development используйте watch mode или соберите с таргетом "development"');
+  console.log('   - Watch mode автоматически синхронизирует изменения и пересобирает контейнеры');
 
   rl.close();
 }

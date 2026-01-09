@@ -109,7 +109,7 @@ NODE_ENV=development
 `;
   fs.writeFileSync(path.join(appDir, '.env.example'), envExample);
 
-  // Dockerfile (Production)
+  // Dockerfile (multi-stage: production + development)
   const dockerfile = `# Build stage
 FROM node:20-alpine AS builder
 
@@ -134,7 +134,10 @@ WORKDIR /app/apps/${name}
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:20-alpine AS production
+
+# Port argument (can be overridden at build time)
+ARG PORT=${port}
 
 WORKDIR /app
 
@@ -154,19 +157,20 @@ COPY --from=builder /app/apps/${name}/dist ./apps/${name}/dist
 
 WORKDIR /app/apps/${name}
 
-# Set default port (can be overridden via environment variable in docker-compose)
-ENV PORT=${port}
+# Set port from ARG (can be overridden via environment variable in docker-compose)
+ENV PORT=\${PORT}
 
-# Expose default port (actual port is controlled by PORT env variable at runtime)
-EXPOSE ${port}
+# Expose port (uses same value as ENV PORT)
+EXPOSE \${PORT}
 
 # Start application
 CMD ["node", "dist/index.js"]
-`;
-  fs.writeFileSync(path.join(appDir, 'Dockerfile'), dockerfile);
 
-  // Dockerfile.dev (Development для watch mode)
-  const dockerfileDev = `FROM node:20-alpine
+# Development stage
+FROM node:20-alpine AS development
+
+# Port argument (can be overridden at build time)
+ARG PORT=${port}
 
 WORKDIR /app
 
@@ -186,17 +190,17 @@ COPY apps/${name} ./apps/${name}/
 
 WORKDIR /app/apps/${name}
 
-# Set default port (can be overridden via environment variable)
-ENV PORT=${port}
+# Set port from ARG (can be overridden via environment variable)
+ENV PORT=\${PORT}
 ENV NODE_ENV=development
 
-# Expose default port
-EXPOSE ${port}
+# Expose port (uses same value as ENV PORT)
+EXPOSE \${PORT}
 
 # Start in dev mode (with nodemon/ts-node)
 CMD ["npm", "run", "dev"]
 `;
-  fs.writeFileSync(path.join(appDir, 'Dockerfile.dev'), dockerfileDev);
+  fs.writeFileSync(path.join(appDir, 'Dockerfile'), dockerfile);
 
   // .dockerignore
   const dockerignore = `node_modules
@@ -222,7 +226,6 @@ README.md
       'nodemon.json',
       '.env.example',
       'Dockerfile',
-      'Dockerfile.dev',
       '.dockerignore'
     ],
     commands: [

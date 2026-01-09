@@ -1,1 +1,21 @@
 services:
+  test:
+    build:
+      context: .
+      dockerfile: apps/test/Dockerfile
+      target: development
+    container_name: test
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/test
+          target: /app/apps/test
+        - action: sync
+          path: ./packages
+          target: /app/packages
+        - action: rebuild
+          path: ./.env
+

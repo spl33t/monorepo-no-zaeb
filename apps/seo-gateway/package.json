@@ -20,7 +20,3 @@
     "@monorepo/core": "*"
   }
 }
-    "@monorepo/contract-page-2": "*",
-    "@monorepo/core": "*"
-  }
-}
