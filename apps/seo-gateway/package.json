@@ -14,9 +14,5 @@
     "docker:attach": "docker attach seo-gateway",
     "docker:down": "node ../../tools/docker-helper.js down seo-gateway",
     "docker:logs": "docker logs -f seo-gateway"
-  },
-  "dependencies": {
-    "@monorepo/contract-page-2": "*",
-    "@monorepo/core": "*"
   }
 }
