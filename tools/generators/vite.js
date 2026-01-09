@@ -379,7 +379,7 @@ COPY --from=builder /app/apps/${name}/dist /usr/share/nginx/html
 # PORT will be available from env_file in docker-compose
 RUN mkdir -p /etc/nginx/templates && \\
     echo 'server { \\
-    listen \\${PORT}; \\
+    listen \${PORT}; \\
     server_name _; \\
     root /usr/share/nginx/html; \\
     index index.html; \\
@@ -395,8 +395,8 @@ ENV PORT=\${PORT}
 EXPOSE \${PORT}
 
 # Start nginx with template processing
-# envsubst replaces only \\${PORT}, not $uri (which is nginx variable)
-CMD ["/bin/sh", "-c", "envsubst '\\${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+# envsubst replaces only \${PORT}, not $uri (which is nginx variable)
+CMD ["/bin/sh", "-c", "envsubst '\${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
 `;
   fs.writeFileSync(path.join(appDir, 'Dockerfile'), dockerfile);
 
