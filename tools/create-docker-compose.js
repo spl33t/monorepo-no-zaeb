@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const { parseDockerCompose, stringifyDockerCompose } = require('./docker-compose-parser');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -13,230 +14,6 @@ function question(query) {
   return new Promise(resolve => rl.question(query, resolve));
 }
 
-/**
- * Парсит простой YAML (без библиотек для минимальных зависимостей)
- * Работает только с базовыми структурами docker-compose
- */
-function parseYaml(content) {
-  const result = { version: '3.8', services: {}, networks: {}, volumes: {} };
-  const lines = content.split('\n');
-  let currentSection = null;
-  let currentService = null;
-  let serviceContent = {};
-  let currentKey = null;
-  let currentObject = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-    
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // Определяем уровень отступа
-    const indent = line.match(/^(\s*)/)[1].length;
-    
-    // Версия
-    if (trimmed.startsWith('version:')) {
-      result.version = trimmed.split(':')[1].trim().replace(/['"]/g, '');
-      continue;
-    }
-
-    // Секции
-    if (trimmed === 'services:' || trimmed === 'networks:' || trimmed === 'volumes:') {
-      if (currentService) {
-        result.services[currentService] = serviceContent;
-      }
-      currentSection = trimmed.replace(':', '');
-      currentService = null;
-      serviceContent = {};
-      currentKey = null;
-      currentObject = null;
-      continue;
-    }
-
-    // Сервис
-    if (currentSection === 'services' && indent === 2 && trimmed.endsWith(':')) {
-      if (currentService) {
-        result.services[currentService] = serviceContent;
-      }
-      currentService = trimmed.replace(':', '').trim();
-      serviceContent = {};
-      currentKey = null;
-      currentObject = null;
-      continue;
-    }
-
-    // Параметры сервиса (indent >= 4)
-    if (currentService && currentSection === 'services' && indent >= 4) {
-      const match = line.match(/^(\s*)([^:]+):\s*(.*)$/);
-      if (match) {
-        const key = match[2].trim();
-        const value = match[3].trim();
-        
-        // Если это вложенный объект (следующая строка с большим отступом)
-        if (indent === 4 && value === '' && i + 1 < lines.length) {
-          const nextLine = lines[i + 1];
-          const nextIndent = nextLine.match(/^(\s*)/)[1].length;
-          if (nextIndent > indent) {
-            currentKey = key;
-            currentObject = {};
-            serviceContent[key] = currentObject;
-            continue;
-          }
-        }
-        
-        // Если мы внутри объекта (indent === 6)
-        if (indent === 6 && currentObject) {
-          currentObject[key] = value.replace(/^['"]|['"]$/g, '');
-          continue;
-        }
-        
-        // Обычное значение или массив
-        if (indent === 4) {
-          currentKey = null;
-          currentObject = null;
-          
-          // Проверяем массив (начинается с -)
-          if (value.startsWith('-')) {
-            const arrayValue = value.substring(1).trim().replace(/^['"]|['"]$/g, '');
-            if (!serviceContent[key]) {
-              serviceContent[key] = [];
-            }
-            serviceContent[key].push(arrayValue);
-          } else if (value === '' && i + 1 < lines.length) {
-            // Пустое значение может означать массив или объект
-            const nextLine = lines[i + 1];
-            const nextIndent = nextLine.match(/^(\s*)/)[1].length;
-            const nextTrimmed = nextLine.trim();
-            if (nextIndent === 6 && nextTrimmed.startsWith('-')) {
-              // Это массив
-              serviceContent[key] = [];
-              // Пропускаем эту итерацию, обработаем в следующей
-              continue;
-            }
-          } else {
-            serviceContent[key] = value.replace(/^['"]|['"]$/g, '');
-          }
-        }
-        
-        // Элементы массива (indent === 6, начинается с -)
-        if (indent === 6 && trimmed.startsWith('-')) {
-          const arrayValue = trimmed.substring(1).trim().replace(/^['"]|['"]$/g, '');
-          // Находим последний ключ, который был массивом
-          const lastKey = Object.keys(serviceContent).pop();
-          if (lastKey && Array.isArray(serviceContent[lastKey])) {
-            serviceContent[lastKey].push(arrayValue);
-          } else if (currentKey && serviceContent[currentKey] && Array.isArray(serviceContent[currentKey])) {
-            serviceContent[currentKey].push(arrayValue);
-          }
-        }
-      }
-    }
-  }
-
-  // Добавляем последний сервис
-  if (currentService) {
-    result.services[currentService] = serviceContent;
-  }
-
-  return result;
-}
-
-/**
- * Преобразует объект обратно в YAML
- */
-function stringifyYaml(obj) {
-  // version больше не нужен в новых версиях docker compose
-  let result = '';
-  
-  if (Object.keys(obj.services).length > 0) {
-    result += 'services:\n';
-    for (const [name, service] of Object.entries(obj.services)) {
-      result += `  ${name}:\n`;
-      for (const [key, value] of Object.entries(service)) {
-        if (Array.isArray(value)) {
-          result += `    ${key}:\n`;
-          value.forEach(item => {
-            // Если элемент массива - строка, добавляем как есть
-            if (typeof item === 'string') {
-              result += `      - ${item}\n`;
-            } else if (typeof item === 'object' && item !== null) {
-              // Объект в массиве (например, watch items)
-              result += `      - action: ${item.action}\n`;
-              result += `        path: ${item.path}\n`;
-              if (item.target) {
-                result += `        target: ${item.target}\n`;
-              }
-            } else {
-              result += `      - ${JSON.stringify(item)}\n`;
-            }
-          });
-        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          result += `    ${key}:\n`;
-          for (const [k, v] of Object.entries(value)) {
-            if (Array.isArray(v)) {
-              // Массив внутри объекта (например, develop.watch)
-              result += `      ${k}:\n`;
-              v.forEach(item => {
-                if (typeof item === 'object' && item !== null) {
-                  result += `        - action: ${item.action}\n`;
-                  result += `          path: ${item.path}\n`;
-                  if (item.target) {
-                    result += `          target: ${item.target}\n`;
-                  }
-                } else {
-                  result += `        - ${item}\n`;
-                }
-              });
-            } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-              // Вложенный объект (например, build.args)
-              result += `      ${k}:\n`;
-              for (const [nk, nv] of Object.entries(v)) {
-                const val = typeof nv === 'string' && (nv.includes(':') || nv.includes(' ')) ? `'${nv}'` : nv;
-                result += `        ${nk}: ${val}\n`;
-              }
-            } else {
-              // Экранируем значения если нужно
-              const val = typeof v === 'string' && (v.includes(':') || v.includes(' ')) ? `'${v}'` : v;
-              result += `      ${k}: ${val}\n`;
-            }
-          }
-        } else {
-          // Экранируем строковые значения если нужно
-          const val = typeof value === 'string' && (value.includes(':') || value.includes(' ')) ? `'${value}'` : value;
-          result += `    ${key}: ${val}\n`;
-        }
-      }
-      result += '\n';
-    }
-  }
-
-  if (Object.keys(obj.networks || {}).length > 0) {
-    result += '\nnetworks:\n';
-    for (const [name, network] of Object.entries(obj.networks)) {
-      result += `  ${name}:\n`;
-      if (typeof network === 'object' && network !== null) {
-        for (const [key, value] of Object.entries(network)) {
-          result += `    ${key}: ${value}\n`;
-        }
-      }
-    }
-  }
-
-  if (Object.keys(obj.volumes || {}).length > 0) {
-    result += '\nvolumes:\n';
-    for (const [name, volume] of Object.entries(obj.volumes)) {
-      result += `  ${name}:\n`;
-      if (typeof volume === 'object' && volume !== null) {
-        for (const [key, value] of Object.entries(volume)) {
-          result += `    ${key}: ${value}\n`;
-        }
-      }
-    }
-  }
-
-  return result;
-}
 
 /**
  * Получает список доступных приложений
@@ -381,9 +158,12 @@ function createServiceConfig(appName, port, appType) {
     }
   };
 
-  // Для Vite приложений порт всегда 80
+  // Для Vite приложений:
+  // - В development: используем порт из .env (Vite dev server)
+  // - В production: используем порт из .env (nginx настроен на этот порт через ARG PORT)
   if (appType === 'vite') {
-    service.ports = [`${port}:80`];
+    // И в development, и в production используем порт из .env
+    service.ports = [`${port}:${port}`];
   }
 
   return service;
@@ -398,9 +178,8 @@ async function createDockerCompose() {
   // Читаем существующий файл если есть
   if (fs.existsSync(composePath)) {
     console.log('📄 Найден существующий docker-compose.yml');
-    const content = fs.readFileSync(composePath, 'utf8');
     try {
-      compose = parseYaml(content);
+      compose = parseDockerCompose(composePath);
       console.log(`✅ Загружено ${Object.keys(compose.services).length} сервис(ов)\n`);
     } catch (error) {
       console.error('⚠️  Ошибка при чтении docker-compose.yml, создам новый файл');
@@ -496,7 +275,7 @@ async function createDockerCompose() {
 
   // Сохраняем docker-compose.yml
   try {
-    const yamlContent = stringifyYaml(compose);
+    const yamlContent = stringifyDockerCompose(compose);
     fs.writeFileSync(composePath, yamlContent);
   } catch (error) {
     console.error(`❌ Ошибка при сохранении файла: ${error.message}`);

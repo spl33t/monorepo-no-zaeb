@@ -6,13 +6,6 @@
     "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js",
     "clean": "rimraf dist",
     "dev": "nodemon --exec npx tsx src/index.ts",
-    "start": "node dist/index.js",
-    "--------------------------------Docker commands--------------------------------": "",
-    "docker:build": "node ../../tools/docker-helper.js build Dockerfile seo-gateway",
-    "docker:up": "node ../../tools/docker-helper.js up Dockerfile seo-gateway 4000 -d",
-    "docker:up:attach": "node ../../tools/docker-helper.js up Dockerfile seo-gateway 4000",
-    "docker:attach": "docker attach seo-gateway",
-    "docker:down": "node ../../tools/docker-helper.js down seo-gateway",
-    "docker:logs": "docker logs -f seo-gateway"
+    "start": "node dist/index.js"
   }
 }

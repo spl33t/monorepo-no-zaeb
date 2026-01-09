@@ -17,14 +17,7 @@ function createNestJsApp(appDir, name, port = '3000') {
       build: 'node esbuild.config.js',
       clean: 'rimraf dist',
       dev: 'nodemon',
-      start: 'node dist/index.js',
-      '--------------------------------Docker commands--------------------------------': '',
-      'docker:build': `node ../../tools/docker-helper.js build Dockerfile ${name}`,
-      'docker:up': `node ../../tools/docker-helper.js up Dockerfile ${name} ${port} -d`,
-      'docker:up:attach': `node ../../tools/docker-helper.js up Dockerfile ${name} ${port}`,
-      'docker:attach': `docker attach ${name}`,
-      'docker:down': `node ../../tools/docker-helper.js down ${name}`,
-      'docker:logs': `docker logs -f ${name}`
+      start: 'node dist/index.js'
     },
     dependencies: {
       '@nestjs/common': '^10.0.0',
@@ -300,14 +293,6 @@ README.md
       `npm run dev --workspace=${name}       # Dev режим`,
       `npm run build --workspace=${name}     # Сборка`,
       `npm run start --workspace=${name}     # Запуск собранного`
-    ],
-    dockerCommands: [
-      `npm run docker:build                 # Сборка образа (без запуска)`,
-      `npm run docker:up                    # Сборка + запуск (фоновый режим)`,
-      `npm run docker:up:attach             # Сборка + запуск с выводом логов`,
-      `npm run docker:attach                # Подключение к запущенному контейнеру`,
-      `npm run docker:down                  # Остановка и удаление контейнера`,
-      `npm run docker:logs                  # Просмотр логов`
     ],
     nextSteps: [
       `Открой http://localhost:${port}`

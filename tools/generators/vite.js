@@ -6,8 +6,9 @@ const path = require('path');
  * @param {string} appDir - Директория приложения
  * @param {string} name - Название приложения
  * @param {string} framework - 'react' или 'vanilla'
+ * @param {string} port - Порт приложения
  */
-function createViteApp(appDir, name, framework) {
+function createViteApp(appDir, name, framework, port = '80') {
   // package.json
   const packageJson = {
     name,
@@ -17,14 +18,7 @@ function createViteApp(appDir, name, framework) {
       'dev': 'vite',
       'build': 'tsc && vite build',
       'preview': 'vite preview',
-      'clean': 'rimraf dist',
-      '--------------------------------Docker commands--------------------------------': '',
-      'docker:build': `node ../../tools/docker-helper.js build Dockerfile ${name}`,
-      'docker:up': `node ../../tools/docker-helper.js up Dockerfile ${name} 80 -d`,
-      'docker:up:attach': `node ../../tools/docker-helper.js up Dockerfile ${name} 80`,
-      'docker:attach': `docker attach ${name}`,
-      'docker:down': `node ../../tools/docker-helper.js down ${name}`,
-      'docker:logs': `docker logs -f ${name}`
+      'clean': 'rimraf dist'
     }
   };
 
@@ -103,9 +97,40 @@ function createViteApp(appDir, name, framework) {
     viteConfig = `import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'fs';
+
+// Читаем PORT из .env файла
+function getPortFromEnv(): number {
+  const envPath = path.resolve(__dirname, '.env');
+  
+  // Проверяем существование файла
+  try {
+    readFileSync(envPath, 'utf-8');
+  } catch (error) {
+    throw new Error(\`❌ Файл .env не найден: \${envPath}\`);
+  }
+  
+  // Читаем содержимое файла
+  const envContent = readFileSync(envPath, 'utf-8');
+  const portMatch = envContent.match(/^PORT=(\\d+)/m);
+  
+  if (!portMatch) {
+    throw new Error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
+  }
+  
+  return parseInt(portMatch[1], 10);
+}
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    port: getPortFromEnv(),
+    host: '0.0.0.0',
+  },
+  preview: {
+    port: getPortFromEnv(),
+    host: '0.0.0.0',
+  },
   resolve: {
     alias: {
       '@monorepo': path.resolve(__dirname, '../../packages')
@@ -117,8 +142,39 @@ export default defineConfig({
     // Vanilla
     viteConfig = `import path from 'path';
 import { defineConfig } from 'vite';
+import { readFileSync } from 'fs';
+
+// Читаем PORT из .env файла
+function getPortFromEnv(): number {
+  const envPath = path.resolve(__dirname, '.env');
+  
+  // Проверяем существование файла
+  try {
+    readFileSync(envPath, 'utf-8');
+  } catch (error) {
+    throw new Error(\`❌ Файл .env не найден: \${envPath}\`);
+  }
+  
+  // Читаем содержимое файла
+  const envContent = readFileSync(envPath, 'utf-8');
+  const portMatch = envContent.match(/^PORT=(\\d+)/m);
+  
+  if (!portMatch) {
+    throw new Error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
+  }
+  
+  return parseInt(portMatch[1], 10);
+}
 
 export default defineConfig({
+  server: {
+    port: getPortFromEnv(),
+    host: '0.0.0.0',
+  },
+  preview: {
+    port: getPortFromEnv(),
+    host: '0.0.0.0',
+  },
   resolve: {
     alias: {
       '@monorepo': path.resolve(__dirname, '../../packages')
@@ -239,16 +295,23 @@ interface ImportMeta {
   fs.writeFileSync(path.join(appDir, 'src/vite-env.d.ts'), viteEnv);
   
   // .env.example
-  const envExample = `# Environment variables for Vite
+  const envExample = `# Environment variables
 # Copy this file to .env and set your values
-# ВАЖНО: Только переменные с префиксом VITE_ доступны в клиентском коде
 
+PORT=${port}
+
+# ВАЖНО: Только переменные с префиксом VITE_ доступны в клиентском коде
 # VITE_API_URL=http://localhost:3000
 # VITE_APP_TITLE=My App
 `;
   fs.writeFileSync(path.join(appDir, '.env.example'), envExample);
+  
+  // .env (создаем сразу с теми же значениями)
+  const env = `PORT=${port}
+`;
+  fs.writeFileSync(path.join(appDir, '.env'), env);
 
-  // Dockerfile для Vite (multi-stage: build + nginx)
+  // Dockerfile для Vite (multi-stage: build + development + production)
   const dockerfile = `# Build stage
 FROM node:20-alpine AS builder
 
@@ -272,28 +335,68 @@ COPY apps/${name} ./apps/${name}/
 WORKDIR /app/apps/${name}
 RUN npm run build
 
+# Development stage
+FROM node:20-alpine AS development
+
+ARG PORT=80
+
+WORKDIR /app
+
+# Copy root package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Copy workspace configuration
+COPY apps/${name}/package.json ./apps/${name}/
+COPY packages ./packages/
+
+# Install all dependencies (including dev)
+RUN npm install
+
+# Copy source code
+COPY apps/${name} ./apps/${name}/
+
+WORKDIR /app/apps/${name}
+
+# Set port from ARG (can be overridden via .env file in docker-compose)
+ENV PORT=\${PORT}
+
+# Expose port
+EXPOSE \${PORT}
+
+# Start dev server
+CMD ["npm", "run", "dev"]
+
 # Production stage with nginx
-FROM nginx:alpine
+FROM nginx:alpine AS production
+
+ARG PORT=80
 
 # Copy built files from builder
 COPY --from=builder /app/apps/${name}/dist /usr/share/nginx/html
 
-# Copy nginx configuration (optional - for SPA routing)
-RUN echo 'server { \\
-    listen 80; \\
+# Create nginx configuration template with PORT variable
+# PORT will be available from env_file in docker-compose
+RUN mkdir -p /etc/nginx/templates && \\
+    echo 'server { \\
+    listen \\${PORT}; \\
     server_name _; \\
     root /usr/share/nginx/html; \\
     index index.html; \\
     location / { \\
         try_files $uri $uri/ /index.html; \\
     } \\
-}' > /etc/nginx/conf.d/default.conf
+}' > /etc/nginx/templates/default.conf.template
 
-# Expose port
-EXPOSE 80
+# Set port from ARG (can be overridden via .env file in docker-compose)
+ENV PORT=\${PORT}
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Expose port (uses same value as ENV PORT)
+EXPOSE \${PORT}
+
+# Start nginx with template processing
+# envsubst replaces only \\${PORT}, not $uri (which is nginx variable)
+CMD ["/bin/sh", "-c", "envsubst '\\${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
 `;
   fs.writeFileSync(path.join(appDir, 'Dockerfile'), dockerfile);
 
@@ -332,6 +435,7 @@ README.md
   structure.push('vite.config.ts');
   structure.push('package.json');
   structure.push('tsconfig.json');
+  structure.push('.env');
   structure.push('.env.example');
   structure.push('Dockerfile');
   structure.push('.dockerignore');
@@ -342,14 +446,6 @@ README.md
       `npm run dev --workspace=${name}       # Dev сервер`,
       `npm run build --workspace=${name}     # Сборка`,
       `npm run preview --workspace=${name}   # Превью сборки`
-    ],
-    dockerCommands: [
-      `npm run docker:build                 # Сборка образа (без запуска)`,
-      `npm run docker:up                    # Сборка + запуск (фоновый режим)`,
-      `npm run docker:up:attach             # Сборка + запуск с выводом логов`,
-      `npm run docker:attach                # Подключение к запущенному контейнеру`,
-      `npm run docker:down                  # Остановка и удаление контейнера`,
-      `npm run docker:logs                  # Просмотр логов`
     ],
     nextSteps: [
       'Открой http://localhost:5173'

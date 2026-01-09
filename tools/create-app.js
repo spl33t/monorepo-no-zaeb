@@ -74,17 +74,14 @@ async function createApp() {
     process.exit(1);
   }
 
-  // Порт (только для Node.js/NestJS, для Vite всегда 80)
-  let port = '80';
-  if (type !== 'vite') {
-    const defaultPort = type === 'nestjs' ? '3000' : '3000';
-    const portInput = await question(`\nПорт приложения [по умолчанию: ${defaultPort}]: `) || defaultPort;
-    if (!/^\d+$/.test(portInput) || parseInt(portInput) < 1 || parseInt(portInput) > 65535) {
-      console.error('❌ Порт должен быть числом от 1 до 65535');
-      process.exit(1);
-    }
-    port = portInput;
+  // Порт
+  const defaultPort = type === 'vite' ? '80' : (type === 'nestjs' ? '3000' : '3000');
+  const portInput = await question(`\nПорт приложения [по умолчанию: ${defaultPort}]: `) || defaultPort;
+  if (!/^\d+$/.test(portInput) || parseInt(portInput) < 1 || parseInt(portInput) > 65535) {
+    console.error('❌ Порт должен быть числом от 1 до 65535');
+    process.exit(1);
   }
+  const port = portInput;
 
   const appDir = path.join(process.cwd(), 'apps', name);
   
@@ -105,7 +102,7 @@ async function createApp() {
   } else if (type === 'nestjs') {
     result = createNestJsApp(appDir, name, port);
   } else if (type === 'vite') {
-    result = createViteApp(appDir, name, viteFramework);
+    result = createViteApp(appDir, name, viteFramework, port);
   }
 
   // Выводим структуру
@@ -124,11 +121,11 @@ async function createApp() {
 
   console.log('\n💡 Доступные команды:');
   result.commands.forEach(cmd => console.log(`   ${cmd}`));
-
-  if (result.dockerCommands) {
-    console.log('\n🐳 Docker команды:');
-    result.dockerCommands.forEach(cmd => console.log(`   ${cmd}`));
-  }
+  
+  console.log('\n🐳 Docker команды (через docker-compose):');
+  console.log(`   npm run create:docker-compose  # Добавить приложение в docker-compose.yml`);
+  console.log(`   npm run docker:up              # Запустить все сервисы (production)`);
+  console.log(`   npm run docker:up:watch        # Запустить с watch mode (development)`);
 
   if (result.envInfo) {
     console.log('\n📝 ' + result.envInfo[0]);
