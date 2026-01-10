@@ -58,7 +58,7 @@ esbuild.build({
     watch: ['src', '../../packages', '.env'],
     ext: 'ts,json,env',
     ignore: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
-    exec: 'ts-node --transpile-only src/index.ts',
+    exec: 'tsx src/index.ts',
     env: {
       NODE_ENV: 'development'
     }
@@ -75,13 +75,7 @@ import 'dotenv/config';
 import http from 'http';
 
 const PORT = process.env.PORT || ${port};
-// 0.0.0.0 означает "слушать на всех сетевых интерфейсах"
-// Это позволяет серверу быть доступным:
-// - Локально: http://localhost:\${PORT} или http://127.0.0.1:\${PORT}
-// - Из сети: http://<IP-адрес>:\${PORT}
-// - В контейнерах: для health checks от Instance Group
-// ⚠️ В браузере нельзя перейти по 0.0.0.0 - используйте localhost!
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = '0.0.0.0';
 
 console.log('🚀 ${name} is running!');
 console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);

@@ -1,4 +1,23 @@
 services:
+  test:
+    build:
+      context: .
+      dockerfile: apps/test/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    container_name: test
+    ports:
+      - 3000:3000
+    env_file:
+      - apps/test/.env
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/test
+          target: /app/apps/test
+        - action: sync
+          path: ./packages
+          target: /app/packages
   react:
     build:
       context: .
@@ -6,7 +25,7 @@ services:
       target: ${DOCKER_TARGET:-development}
     container_name: react
     ports:
-      - 3434:3434
+      - 4444:4444
     env_file:
       - apps/react/.env
     restart: unless-stopped
@@ -15,6 +34,25 @@ services:
         - action: sync
           path: ./apps/react
           target: /app/apps/react
+        - action: sync
+          path: ./packages
+          target: /app/packages
+  nest:
+    build:
+      context: .
+      dockerfile: apps/nest/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    container_name: nest
+    ports:
+      - 4343:4343
+    env_file:
+      - apps/nest/.env
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/nest
+          target: /app/apps/nest
         - action: sync
           path: ./packages
           target: /app/packages

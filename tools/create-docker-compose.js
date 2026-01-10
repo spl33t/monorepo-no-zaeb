@@ -169,95 +169,132 @@ function createServiceConfig(appName, port, appType) {
   return service;
 }
 
-async function createDockerCompose() {
-  console.log('\n🐳 Управление docker-compose.yml\n');
-
+/**
+ * Добавляет приложение в docker-compose.yml
+ * @param {string|null} appNameArg - Название приложения для добавления (null = интерактивный режим)
+ */
+async function addAppToDockerCompose(appNameArg = null) {
   const composePath = path.join(process.cwd(), 'docker-compose.yml');
   let compose = { services: {}, networks: {}, volumes: {} };
+  const isInteractive = appNameArg === null;
 
   // Читаем существующий файл если есть
   if (fs.existsSync(composePath)) {
-    console.log('📄 Найден существующий docker-compose.yml');
     try {
       compose = parseDockerCompose(composePath);
-      console.log(`✅ Загружено ${Object.keys(compose.services).length} сервис(ов)\n`);
     } catch (error) {
       console.error('⚠️  Ошибка при чтении docker-compose.yml, создам новый файл');
       compose = { services: {}, networks: {}, volumes: {} };
     }
-  } else {
-    console.log('📄 docker-compose.yml не найден, будет создан новый файл\n');
   }
 
-  // Получаем список доступных приложений
-  let availableApps;
-  try {
-    availableApps = getAvailableApps();
-    console.log(`🔍 Найдено приложений: ${availableApps.length}`);
-  } catch (error) {
-    console.error('❌ Ошибка при получении списка приложений:', error.message);
-    console.error(error.stack);
-    rl.close();
-    process.exit(1);
-  }
-  
-  if (availableApps.length === 0) {
-    console.error('❌ Не найдено приложений с Dockerfile в папке apps/');
-    rl.close();
-    process.exit(1);
-  }
+  let appName = appNameArg;
 
-  // Показываем существующие сервисы
-  const existingServices = Object.keys(compose.services);
-  if (existingServices.length > 0) {
-    console.log('Существующие сервисы:');
-    existingServices.forEach((name, index) => {
-      console.log(`  ${index + 1}. ${name}`);
+  // Если appName не передан - интерактивный режим
+  if (isInteractive) {
+    console.log('\n🐳 Управление docker-compose.yml\n');
+    
+    if (fs.existsSync(composePath)) {
+      console.log('📄 Найден существующий docker-compose.yml');
+      console.log(`✅ Загружено ${Object.keys(compose.services).length} сервис(ов)\n`);
+    } else {
+      console.log('📄 docker-compose.yml не найден, будет создан новый файл\n');
+    }
+
+    // Получаем список доступных приложений
+    let availableApps;
+    try {
+      availableApps = getAvailableApps();
+      console.log(`🔍 Найдено приложений: ${availableApps.length}`);
+    } catch (error) {
+      console.error('❌ Ошибка при получении списка приложений:', error.message);
+      console.error(error.stack);
+      rl.close();
+      process.exit(1);
+    }
+    
+    if (availableApps.length === 0) {
+      console.error('❌ Не найдено приложений с Dockerfile в папке apps/');
+      rl.close();
+      process.exit(1);
+    }
+
+    // Показываем существующие сервисы
+    const existingServices = Object.keys(compose.services);
+    if (existingServices.length > 0) {
+      console.log('Существующие сервисы:');
+      existingServices.forEach((name, index) => {
+        console.log(`  ${index + 1}. ${name}`);
+      });
+      console.log('');
+    }
+
+    // Показываем доступные приложения
+    const appsToAdd = availableApps.filter(app => !existingServices.includes(app));
+    
+    if (appsToAdd.length === 0) {
+      console.log('✅ Все доступные приложения уже добавлены в docker-compose.yml');
+      rl.close();
+      return;
+    }
+
+    console.log('Доступные приложения для добавления:');
+    appsToAdd.forEach((app, index) => {
+      try {
+        const port = getAppPort(app);
+        const type = getAppType(app);
+        console.log(`  ${index + 1}. ${app} (порт: ${port}, тип: ${type})`);
+      } catch (error) {
+        console.log(`  ${index + 1}. ${app} (ошибка получения информации: ${error.message})`);
+      }
     });
-    console.log('');
+
+    // Выбор приложения
+    let choice;
+    try {
+      choice = await question(`\nВыберите приложение для добавления [1-${appsToAdd.length}]: `);
+    } catch (error) {
+      console.error('❌ Ошибка при чтении ввода:', error.message);
+      rl.close();
+      process.exit(1);
+    }
+    
+    const appIndex = parseInt(choice) - 1;
+
+    if (isNaN(appIndex) || appIndex < 0 || appIndex >= appsToAdd.length) {
+      console.error(`❌ Неверный выбор. Введите число от 1 до ${appsToAdd.length}`);
+      rl.close();
+      process.exit(1);
+    }
+
+    appName = appsToAdd[appIndex];
   }
 
-  // Показываем доступные приложения
-  const appsToAdd = availableApps.filter(app => !existingServices.includes(app));
-  
-  if (appsToAdd.length === 0) {
-    console.log('✅ Все доступные приложения уже добавлены в docker-compose.yml');
-    rl.close();
+  // Проверяем, что приложение существует
+  const appDir = path.join(process.cwd(), 'apps', appName);
+  if (!fs.existsSync(appDir)) {
+    console.error(`❌ Приложение "${appName}" не найдено в apps/`);
+    if (isInteractive) rl.close();
+    process.exit(1);
+  }
+
+  // Проверяем, что приложение еще не добавлено
+  if (compose.services[appName]) {
+    console.log(`⚠️  Приложение "${appName}" уже добавлено в docker-compose.yml`);
+    if (isInteractive) rl.close();
     return;
   }
 
-  console.log('Доступные приложения для добавления:');
-  appsToAdd.forEach((app, index) => {
-    try {
-      const port = getAppPort(app);
-      const type = getAppType(app);
-      console.log(`  ${index + 1}. ${app} (порт: ${port}, тип: ${type})`);
-    } catch (error) {
-      console.log(`  ${index + 1}. ${app} (ошибка получения информации: ${error.message})`);
-    }
-  });
-
-  // Выбор приложения
-  let choice;
+  // Получаем информацию о приложении
+  let port, appType;
   try {
-    choice = await question(`\nВыберите приложение для добавления [1-${appsToAdd.length}]: `);
+    port = getAppPort(appName);
+    appType = getAppType(appName);
   } catch (error) {
-    console.error('❌ Ошибка при чтении ввода:', error.message);
-    rl.close();
+    console.error(`❌ Ошибка при получении информации о приложении "${appName}": ${error.message}`);
+    if (isInteractive) rl.close();
     process.exit(1);
   }
-  
-  const appIndex = parseInt(choice) - 1;
-
-  if (isNaN(appIndex) || appIndex < 0 || appIndex >= appsToAdd.length) {
-    console.error(`❌ Неверный выбор. Введите число от 1 до ${appsToAdd.length}`);
-    rl.close();
-    process.exit(1);
-  }
-
-  const appName = appsToAdd[appIndex];
-  const port = getAppPort(appName);
-  const appType = getAppType(appName);
 
   console.log(`\n📦 Добавляю приложение "${appName}" (порт: ${port}, тип: ${appType})...`);
 
@@ -267,7 +304,7 @@ async function createDockerCompose() {
     serviceConfig = createServiceConfig(appName, port, appType);
   } catch (error) {
     console.error(`❌ Ошибка при создании конфигурации сервиса: ${error.message}`);
-    rl.close();
+    if (isInteractive) rl.close();
     process.exit(1);
   }
   
@@ -279,36 +316,53 @@ async function createDockerCompose() {
     fs.writeFileSync(composePath, yamlContent);
   } catch (error) {
     console.error(`❌ Ошибка при сохранении файла: ${error.message}`);
-    rl.close();
+    if (isInteractive) rl.close();
     process.exit(1);
   }
 
   console.log(`✅ Приложение "${appName}" добавлено в docker-compose.yml`);
   console.log(`\n📝 Файл сохранен: ${composePath}`);
-  console.log('\n💡 Доступные команды:');
-  console.log(`   docker compose up -d ${appName}                    # Запустить сервис (development, фоновый режим)`);
-  console.log(`   docker compose up --watch ${appName}                # Запустить с watch mode (development)`);
-  console.log(`   DOCKER_TARGET=production docker compose up ${appName}  # Запустить с production таргетом`);
-  console.log(`   docker compose build --target development ${appName} # Собрать development образ`);
-  console.log(`   docker compose build --target production ${appName}   # Собрать production образ`);
-  console.log(`   docker compose logs -f ${appName}                   # Просмотр логов`);
-  console.log(`   docker compose ps                                   # Показать статус контейнеров`);
-  console.log(`   docker compose down                                 # Остановить все сервисы`);
-  console.log('\n🔄 Watch Mode отслеживает изменения в:');
-  console.log(`   - Директории приложения (apps/${appName}/) - синхронизация`);
-  console.log('   - Директории packages/ - синхронизация');
-  console.log('\n📝 Примечание:');
-  console.log('   - По умолчанию используется таргет "development" из Dockerfile');
-  console.log('   - Переопределить таргет: DOCKER_TARGET=production docker compose up');
-  console.log('   - Для production используйте переменную DOCKER_TARGET=production');
-  console.log('   - Watch mode автоматически синхронизирует изменения и пересобирает контейнеры');
-
-  rl.close();
+  
+  // Выводим дополнительные инструкции только в интерактивном режиме
+  if (isInteractive) {
+    console.log('\n💡 Доступные команды:');
+    console.log(`   docker compose up -d ${appName}                    # Запустить сервис (development, фоновый режим)`);
+    console.log(`   docker compose up --watch ${appName}                # Запустить с watch mode (development)`);
+    console.log(`   DOCKER_TARGET=production docker compose up ${appName}  # Запустить с production таргетом`);
+    console.log(`   docker compose build --target development ${appName} # Собрать development образ`);
+    console.log(`   docker compose build --target production ${appName}   # Собрать production образ`);
+    console.log(`   docker compose logs -f ${appName}                   # Просмотр логов`);
+    console.log(`   docker compose ps                                   # Показать статус контейнеров`);
+    console.log(`   docker compose down                                 # Остановить все сервисы`);
+    console.log('\n🔄 Watch Mode отслеживает изменения в:');
+    console.log(`   - Директории приложения (apps/${appName}/) - синхронизация`);
+    console.log('   - Директории packages/ - синхронизация');
+    console.log('\n📝 Примечание:');
+    console.log('   - По умолчанию используется таргет "development" из Dockerfile');
+    console.log('   - Переопределить таргет: DOCKER_TARGET=production docker compose up');
+    console.log('   - Для production используйте переменную DOCKER_TARGET=production');
+    console.log('   - Watch mode автоматически синхронизирует изменения и пересобирает контейнеры');
+    rl.close();
+  }
 }
 
-createDockerCompose().catch(err => {
-  console.error('❌ Ошибка:', err.message);
-  rl.close();
-  process.exit(1);
-});
+async function createDockerCompose() {
+  // Проверяем аргументы командной строки
+  const appNameArg = process.argv[2];
+  
+  // Если appName передан как аргумент - неинтерактивный режим, иначе - интерактивный
+  await addAppToDockerCompose(appNameArg || null);
+}
+
+// Экспортируем функцию для использования в других модулях
+module.exports = { addAppToDockerCompose };
+
+// Если скрипт запущен напрямую, а не импортирован
+if (require.main === module) {
+  createDockerCompose().catch(err => {
+    console.error('❌ Ошибка:', err.message);
+    if (rl) rl.close();
+    process.exit(1);
+  });
+}
 

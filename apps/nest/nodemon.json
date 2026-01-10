@@ -9,7 +9,7 @@
     "src/**/*.spec.ts",
     "src/**/*.test.ts"
   ],
-  "exec": "ts-node --transpile-only src/main.ts",
+  "exec": "tsx src/main.ts",
   "env": {
     "NODE_ENV": "development"
   }

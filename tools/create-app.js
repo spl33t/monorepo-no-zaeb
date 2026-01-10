@@ -121,15 +121,23 @@ async function createApp() {
 
   console.log('\n💡 Доступные команды:');
   result.commands.forEach(cmd => console.log(`   ${cmd}`));
-  
-  console.log('\n🐳 Docker команды (через docker-compose):');
-  console.log(`   npm run create:docker-compose  # Добавить приложение в docker-compose.yml`);
-  console.log(`   npm run docker:up              # Запустить все сервисы (production)`);
-  console.log(`   npm run docker:up:watch        # Запустить с watch mode (development)`);
 
   if (result.envInfo) {
     console.log('\n📝 ' + result.envInfo[0]);
     result.envInfo.slice(1).forEach(info => console.log(`   ${info}`));
+  }
+
+  // Автоматически добавляем приложение в docker-compose.yml
+  console.log('\n🐳 Добавляю приложение в docker-compose.yml...');
+  try {
+    const { addAppToDockerCompose } = require('./create-docker-compose');
+    await addAppToDockerCompose(name);
+    console.log('\n💡 Docker команды:');
+    console.log(`   npm run docker:up              # Запустить все сервисы (production)`);
+    console.log(`   npm run docker:up:watch        # Запустить с watch mode (development)`);
+  } catch (error) {
+    console.warn(`\n⚠️  Не удалось добавить приложение в docker-compose.yml: ${error.message}`);
+    console.log(`   Вы можете добавить его вручную: npm run create:docker-compose`);
   }
 
   rl.close();

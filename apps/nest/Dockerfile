@@ -25,7 +25,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 
 # Port argument (default value, can be overridden via .env file in docker-compose)
-ARG PORT=4555
+ARG PORT=4343
 
 WORKDIR /app
 
@@ -58,7 +58,7 @@ CMD ["node", "dist/index.js"]
 FROM node:20-alpine AS development
 
 # Port argument (default value, can be overridden via .env file in docker-compose)
-ARG PORT=4555
+ARG PORT=4343
 
 WORKDIR /app
 

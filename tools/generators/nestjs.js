@@ -70,7 +70,7 @@ esbuild.build({
     watch: ['src', '../../packages', '.env'],
     ext: 'ts,json,env',
     ignore: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
-    exec: 'ts-node --transpile-only src/main.ts',
+    exec: 'tsx src/main.ts',
     env: {
       NODE_ENV: 'development'
     }
@@ -90,13 +90,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
   const port = process.env.PORT || ${port};
-  // 0.0.0.0 означает "слушать на всех сетевых интерфейсах"
-  // Это позволяет серверу быть доступным:
-  // - Локально: http://localhost:\${port} или http://127.0.0.1:\${port}
-  // - Из сети: http://<IP-адрес>:\${port}
-  // - В контейнерах: для health checks от Instance Group
-  // ⚠️ В браузере нельзя перейти по 0.0.0.0 - используйте localhost!
-  const host = process.env.HOST || '0.0.0.0';
+  const host = '0.0.0.0';
   await app.listen(port, host);
   console.log(\`🚀 ${name} is running on: http://\${host}:\${port}\`);
   console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);

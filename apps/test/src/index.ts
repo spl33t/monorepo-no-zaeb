@@ -2,15 +2,12 @@
 
 import 'dotenv/config';
 import http from 'http';
+import { createSeoServer } from '@monorepo/contract-page-2';
+console.log(createSeoServer);
+
 
 const PORT = process.env.PORT || 3000;
-// 0.0.0.0 означает "слушать на всех сетевых интерфейсах"
-// Это позволяет серверу быть доступным:
-// - Локально: http://localhost:${PORT} или http://127.0.0.1:${PORT}
-// - Из сети: http://<IP-адрес>:${PORT}
-// - В контейнерах: для health checks от Instance Group
-// ⚠️ В браузере нельзя перейти по 0.0.0.0 - используйте localhost!
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = '0.0.0.0';
 
 console.log('🚀 test is running!');
 console.log(`📦 NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
