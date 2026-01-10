@@ -99,6 +99,7 @@ async function bootstrap() {
   const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
   console.log(\`🚀 ${name} is running on: http://\${host}:\${port}\`);
+  console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);
 }
 
 bootstrap();

@@ -211,6 +211,7 @@ function App() {
     <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
       <h1>🚀 ${name}</h1>
       <p>Vite + React приложение</p>
+      <p>📦 NODE_ENV: {import.meta.env.MODE}</p>
       <button onClick={() => setCount((count) => count + 1)}>
         count is {count}
       </button>
@@ -244,6 +245,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = \`
   <div>
     <h1>🚀 ${name}</h1>
     <p>Vite + Vanilla TypeScript приложение</p>
+    <p>📦 NODE_ENV: \${import.meta.env.MODE}</p>
     <button id="counter" type="button">Count: 0</button>
   </div>
 \`;

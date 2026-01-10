@@ -1,0 +1,11 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "clean": "rimraf dist",
+    "dev": "nodemon",
+    "start": "node dist/index.js"
+  }
+}

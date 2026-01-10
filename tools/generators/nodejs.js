@@ -84,6 +84,7 @@ const PORT = process.env.PORT || ${port};
 const HOST = process.env.HOST || '0.0.0.0';
 
 console.log('🚀 ${name} is running!');
+console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);
 
 // Создаем HTTP сервер
 const server = http.createServer((req, res) => {
