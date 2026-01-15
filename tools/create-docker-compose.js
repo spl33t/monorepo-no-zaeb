@@ -126,21 +126,14 @@ function getAppType(appName) {
  * Создает конфигурацию сервиса для docker-compose
  */
 function createServiceConfig(appName, port, appType) {
-  // Используем Dockerfile с таргетами (development по умолчанию)
-  const dockerfilePath = `apps/${appName}/Dockerfile`;
-  const contextPath = '.';
-  
-  const service = {
+  return {
     build: {
-      context: contextPath,
-      dockerfile: dockerfilePath,
+      context: '.',
+      dockerfile: `apps/${appName}/Dockerfile`,
       target: '${DOCKER_TARGET:-development}'
     },
     container_name: appName,
     ports: [`${port}:${port}`],
-    env_file: [
-      `apps/${appName}/.env`
-    ],
     restart: 'unless-stopped',
     develop: {
       watch: [
@@ -157,16 +150,6 @@ function createServiceConfig(appName, port, appType) {
       ]
     }
   };
-
-  // Для Vite приложений:
-  // - В development: используем порт из .env (Vite dev server)
-  // - В production: используем порт из .env (nginx настроен на этот порт через ARG PORT)
-  if (appType === 'vite') {
-    // И в development, и в production используем порт из .env
-    service.ports = [`${port}:${port}`];
-  }
-
-  return service;
 }
 
 /**

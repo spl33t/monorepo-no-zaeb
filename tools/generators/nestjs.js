@@ -51,6 +51,32 @@ function createNestJsApp(appDir, name, port = '3000') {
   // tsdown.config.ts
   const tsdownConfig = `import { defineConfig } from 'tsdown';
 import path from 'path';
+import { readFileSync } from 'fs';
+
+// Читаем PORT из .env файла с валидацией
+function getPortFromEnv(): number {
+  // Используем process.cwd() для получения рабочей директории (ES модули)
+  const envPath = path.resolve(process.cwd(), '.env');
+
+  // Проверяем существование файла
+  try {
+    readFileSync(envPath, 'utf-8');
+  } catch (error) {
+    console.error(\`❌ Файл .env не найден: \${envPath}\`);
+    process.exit(1);
+  }
+
+  // Читаем содержимое файла
+  const envContent = readFileSync(envPath, 'utf-8');
+  const portMatch = envContent.match(/^PORT=(\\d+)/m);
+
+  if (!portMatch) {
+    console.error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
+    process.exit(1);
+  }
+
+  return parseInt(portMatch[1], 10);
+}
 
 // Проверяем аргументы командной строки
 const args = process.argv.slice(2);
@@ -62,7 +88,7 @@ let typeCheckScheduled = false;
 // Функция для проверки доступности приложения через HTTP ping
 async function waitForAppReady(port: number, maxAttempts = 30, delay = 500): Promise<boolean> {
   const http = await import('http');
-  
+
   for (let i = 0; i < maxAttempts; i++) {
     try {
       await new Promise<void>((resolve, reject) => {
@@ -82,23 +108,23 @@ async function waitForAppReady(port: number, maxAttempts = 30, delay = 500): Pro
             }
           }
         );
-        
+
         req.on('error', reject);
         req.on('timeout', () => {
           req.destroy();
           reject(new Error('Timeout'));
         });
-        
+
         req.end();
       });
-      
+
       return true; // Приложение готово
     } catch (error) {
       // Приложение ещё не готово, ждём
       await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  }
-  
+
   return false; // Приложение не запустилось за отведённое время
 }
 
@@ -106,7 +132,7 @@ async function waitForAppReady(port: number, maxAttempts = 30, delay = 500): Pro
 async function checkTypeScript() {
   if (typeCheckScheduled) return;
   typeCheckScheduled = true;
-  
+
   const { execSync } = await import('child_process');
   try {
     execSync('tsc --noEmit', {
@@ -139,21 +165,28 @@ export default defineConfig({
   treeshake: true,
   sourcemap: true, // Включаем sourcemap в dev и production режимах
   watch: isDev, // Включаем watch режим при наличии аргумента dev
-  define: {
-    'process.env.NODE_ENV': isDev ? '"development"' : '"production"',
+  env: {
+    NODE_ENV: isDev ? 'development' : 'production',
   },
   hooks: {
+    "build:prepare": async (ctx) => {
+      if (!isDev) {
+        getPortFromEnv(); // Проверяем порт в production
+        await checkTypeScript();
+      }
+    },
     'build:done': async () => {
       if (isDev && !nodemonInstance) {
         // Запускаем nodemon программно после первой сборки
         const nodemon = (await import('nodemon')).default;
-        
-        // Получаем порт из переменных окружения или используем дефолтный
-        const port = parseInt(process.env.PORT || '${port}', 10);
+
+        // Получаем порт из .env файла с валидацией
+        let port = getPortFromEnv();
 
         nodemonInstance = nodemon({
           script: path.join(process.cwd(), 'dist', 'index.cjs'),
-          watch: ['dist'],
+          watch: ['dist', '.env'],
+          legacyWatch: true,
           ext: 'cjs',
           ignore: ['dist/**/*.spec.js', 'dist/**/*.test.js'],
           delay: 500, // Задержка перед перезапуском
@@ -165,7 +198,9 @@ export default defineConfig({
         nodemonInstance
           .on('start', async () => {
             console.log('🚀 Nodemon запущен');
-            
+
+            port = getPortFromEnv();
+
             // Ждём, пока приложение запустится и ответит на HTTP ping
             const isReady = await waitForAppReady(port);
             if (isReady) {
@@ -204,15 +239,15 @@ export default defineConfig({
 
   // src/main.ts
   const mainContent = `import 'dotenv/config';
-import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  const port = process.env.PORT || ${port};
+  const port = process.env.PORT!; // Валидация выполняется в tsdown.config.ts
   const host = '0.0.0.0';
+
   await app.listen(port, host);
   console.log(\`🚀 ${name} is running on: http://\${host}:\${port}\`);
   console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);
@@ -310,9 +345,6 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine AS production
 
-# Port argument (default value, can be overridden via .env file in docker-compose)
-ARG PORT=${port}
-
 WORKDIR /app
 
 # Copy root package files
@@ -331,20 +363,11 @@ COPY --from=builder /app/apps/${name}/dist ./apps/${name}/dist
 
 WORKDIR /app/apps/${name}
 
-# Set port from ARG (can be overridden via .env file in docker-compose)
-ENV PORT=\${PORT}
-
-# Expose port (uses same value as ENV PORT)
-EXPOSE \${PORT}
-
 # Start application
-CMD ["node", "dist/index.cjs"]
+CMD ["npm", "run", "start"]
 
 # Development stage
 FROM node:20-alpine AS development
-
-# Port argument (default value, can be overridden via .env file in docker-compose)
-ARG PORT=${port}
 
 WORKDIR /app
 
@@ -363,12 +386,6 @@ RUN npm install
 COPY apps/${name} ./apps/${name}/
 
 WORKDIR /app/apps/${name}
-
-# Set port from ARG (can be overridden via .env file in docker-compose)
-ENV PORT=\${PORT}
-
-# Expose port (uses same value as ENV PORT)
-EXPOSE \${PORT}
 
 # Start in dev mode (with nodemon/ts-node)
 CMD ["npm", "run", "dev"]
