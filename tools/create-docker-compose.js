@@ -89,7 +89,7 @@ function getAppPort(appName) {
 }
 
 /**
- * Определяет тип приложения (nodejs/nestjs/vite)
+ * Определяет тип приложения (node/vite)
  */
 function getAppType(appName) {
   try {
@@ -101,9 +101,6 @@ function getAppType(appName) {
       
       // Проверяем зависимости
       if (packageJson.dependencies) {
-        if (packageJson.dependencies['@nestjs/core']) {
-          return 'nestjs';
-        }
         if (packageJson.dependencies['react'] || packageJson.dependencies['react-dom']) {
           return 'vite';
         }
@@ -115,10 +112,11 @@ function getAppType(appName) {
       }
     }
 
-    return 'nodejs';
+    // По умолчанию node (включает nestjs и express)
+    return 'node';
   } catch (error) {
     console.warn(`⚠️  Ошибка при определении типа для ${appName}: ${error.message}`);
-    return 'nodejs';
+    return 'node';
   }
 }
 
@@ -134,6 +132,9 @@ function createServiceConfig(appName, port, appType) {
     },
     container_name: appName,
     ports: [`${port}:${port}`],
+    env_file: [
+      `apps/${appName}/.env`
+    ],
     restart: 'unless-stopped',
     develop: {
       watch: [

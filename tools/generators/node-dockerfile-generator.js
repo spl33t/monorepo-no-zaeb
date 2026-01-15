@@ -1,4 +1,10 @@
-# Build stage
+/**
+ * Генерирует Dockerfile для Node.js приложений
+ * @param {string} appName - Название приложения (используется в путях)
+ * @returns {string} Содержимое Dockerfile
+ */
+function generateNodeDockerfile(appName) {
+  return `# Build stage
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -8,17 +14,17 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Copy workspace configuration
-COPY apps/nestjs/package.json ./apps/nestjs/
+COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
 RUN npm install
 
 # Copy source code
-COPY apps/nestjs ./apps/nestjs/
+COPY apps/${appName} ./apps/${appName}/
 
 # Build application
-WORKDIR /app/apps/nestjs
+WORKDIR /app/apps/${appName}
 RUN npm run build
 
 # Production stage
@@ -31,16 +37,16 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Copy workspace configuration
-COPY apps/nestjs/package.json ./apps/nestjs/
+COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install only production dependencies
 RUN npm install --omit=dev
 
 # Copy built application from builder
-COPY --from=builder /app/apps/nestjs/dist ./apps/nestjs/dist
+COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
 
-WORKDIR /app/apps/nestjs
+WORKDIR /app/apps/${appName}
 
 # Start application
 CMD ["npm", "run", "start"]
@@ -55,16 +61,20 @@ COPY package*.json ./
 COPY tsconfig.json ./
 
 # Copy workspace configuration
-COPY apps/nestjs/package.json ./apps/nestjs/
+COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
 RUN npm install
 
 # Copy source code
-COPY apps/nestjs ./apps/nestjs/
+COPY apps/${appName} ./apps/${appName}/
 
-WORKDIR /app/apps/nestjs
+WORKDIR /app/apps/${appName}
 
 # Start in dev mode (with nodemon/ts-node)
 CMD ["npm", "run", "dev"]
+`;
+}
+
+module.exports = { generateNodeDockerfile };

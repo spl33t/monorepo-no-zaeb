@@ -1,4 +1,10 @@
-import { defineConfig } from 'tsdown';
+/**
+ * Генерирует tsdown.config.ts для Node.js приложений
+ * @param {string} entryPath - Путь к entry файлу (например, 'src/main.ts' для NestJS или 'src/index.ts' для Node.js)
+ * @returns {string} Содержимое tsdown.config.ts файла
+ */
+function generateTsdownConfig(entryPath) {
+  return `import { defineConfig } from 'tsdown';
 import path from 'path';
 import { readFileSync } from 'fs';
 
@@ -11,16 +17,16 @@ function getPortFromEnv(): number {
   try {
     readFileSync(envPath, 'utf-8');
   } catch (error) {
-    console.error(`❌ Файл .env не найден: ${envPath}`);
+    console.error(\`❌ Файл .env не найден: \${envPath}\`);
     process.exit(1);
   }
 
   // Читаем содержимое файла
   const envContent = readFileSync(envPath, 'utf-8');
-  const portMatch = envContent.match(/^PORT=(\d+)/m);
+  const portMatch = envContent.match(/^PORT=(\\d+)/m);
 
   if (!portMatch) {
-    console.error(`❌ Переменная PORT не найдена в файле .env: ${envPath}`);
+    console.error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
     process.exit(1);
   }
 
@@ -53,7 +59,7 @@ async function waitForAppReady(port: number, maxAttempts = 30, delay = 500): Pro
             if (res.statusCode === 200) {
               resolve();
             } else {
-              reject(new Error(`Status: ${res.statusCode}`));
+              reject(new Error(\`Status: \${res.statusCode}\`));
             }
           }
         );
@@ -84,7 +90,7 @@ async function checkTypeScript() {
 
   const { execSync } = await import('child_process');
   try {
-    execSync('tsc --noEmit', {
+    execSync('tsc --noEmit --pretty', {
       stdio: 'inherit',
       cwd: process.cwd(),
     });
@@ -103,7 +109,7 @@ async function checkTypeScript() {
 
 export default defineConfig({
   entry: {
-    index: 'src/main.ts',
+    index: '${entryPath}',
   },
   platform: 'node',
   format: ['cjs'],
@@ -120,9 +126,9 @@ export default defineConfig({
   hooks: {
     "build:prepare": async (ctx) => {
       if (!isDev) {
-        getPortFromEnv();
+        getPortFromEnv(); // Проверяем порт в production
         await checkTypeScript();
-      } 
+      }
     },
     'build:done': async () => {
       if (isDev && !nodemonInstance) {
@@ -146,7 +152,7 @@ export default defineConfig({
 
         nodemonInstance
           .on('start', async () => {
-            console.log('🚀 Nodemon запущен');
+            console.log('Nodemon started');
 
             port = getPortFromEnv();
 
@@ -158,28 +164,39 @@ export default defineConfig({
               await checkTypeScript();
             }
           })
-          .on('restart', async (files: string[]) => {
-            console.log('🔄 Перезапуск nodemon из-за изменений:', files);
+          .on('restart', async () => {
+            console.log('Nodemon restarted');
           })
           .on('crash', () => {
-            console.log('❌ Приложение упало, nodemon перезапустит его');
+            console.log('Application crashed. Nodemon will restart it before fixing the error');
           });
 
-        // Обработка завершения процесса
-        process.on('SIGINT', () => {
+        // Функция очистки dist при завершении dev режима
+        const cleanup = async () => {
           if (nodemonInstance) {
             nodemonInstance.emit('quit');
           }
+          
+          // Удаляем dist после завершения dev режима
+          try {
+            const { rmSync } = await import('fs');
+            const distPath = path.join(process.cwd(), 'dist');
+            rmSync(distPath, { recursive: true, force: true });
+          } catch (error) {
+            // Игнорируем ошибки, если dist уже удалён или не существует
+          }
+          
           process.exit(0);
-        });
+        };
 
-        process.on('SIGTERM', () => {
-          if (nodemonInstance) {
-            nodemonInstance.emit('quit');
-          }
-          process.exit(0);
-        });
+        // Обработка завершения процесса
+        process.on('SIGINT', cleanup);
+        process.on('SIGTERM', cleanup);
       }
     },
   },
 });
+`;
+}
+
+module.exports = { generateTsdownConfig };

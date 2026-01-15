@@ -1,18 +1,20 @@
 services:
-  nestjs:
+  react-test:
     build:
       context: .
-      dockerfile: apps/nestjs/Dockerfile
+      dockerfile: apps/react-test/Dockerfile
       target: ${DOCKER_TARGET:-development}
-    container_name: nestjs
+    container_name: react-test
     ports:
-      - 3434:3434
+      - 5656:5656
+    env_file:
+      - apps/react-test/.env
     restart: unless-stopped
     develop:
       watch:
         - action: sync
-          path: ./apps/nestjs
-          target: /app/apps/nestjs
+          path: ./apps/react-test
+          target: /app/apps/react-test
         - action: sync
           path: ./packages
           target: /app/packages

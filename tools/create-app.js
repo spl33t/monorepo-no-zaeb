@@ -5,8 +5,7 @@ const path = require('path');
 const readline = require('readline');
 
 // Импортируем генераторы
-const { createNodeJsApp } = require('./generators/nodejs');
-const { createNestJsApp } = require('./generators/nestjs');
+const { createNodeApp } = require('./generators/node');
 const { createViteApp } = require('./generators/vite');
 
 const rl = readline.createInterface({
@@ -19,9 +18,13 @@ function question(query) {
 }
 
 const APP_TYPES = [
-  { key: 'nodejs', name: 'Node.js TypeScript приложение' },
-  { key: 'nestjs', name: 'NestJS API сервер' },
+  { key: 'node', name: 'Node.js приложение' },
   { key: 'vite', name: 'Vite приложение (React/Vanilla)' }
+];
+
+const NODE_VARIANTS = [
+  { key: 'nestjs', name: 'NestJS API сервер' },
+  { key: 'express', name: 'Express/Plain Node.js' }
 ];
 
 const VITE_FRAMEWORKS = [
@@ -47,6 +50,25 @@ async function createApp() {
   }
   
   const type = APP_TYPES[typeIndex].key;
+
+  // Дополнительные вопросы для Node.js
+  let nodeVariant = 'nestjs';
+  if (type === 'node') {
+    console.log('\nВыберите вариант Node.js приложения:');
+    NODE_VARIANTS.forEach((variant, index) => {
+      console.log(`  ${index + 1}. ${variant.name}`);
+    });
+    
+    const variantChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
+    const variantIndex = parseInt(variantChoice) - 1;
+    
+    if (variantIndex < 0 || variantIndex >= NODE_VARIANTS.length) {
+      console.error(`❌ Неверный выбор. Введите число от 1 до ${NODE_VARIANTS.length}`);
+      process.exit(1);
+    }
+    
+    nodeVariant = NODE_VARIANTS[variantIndex].key;
+  }
 
   // Дополнительные вопросы для Vite
   let viteFramework = 'react';
@@ -75,7 +97,7 @@ async function createApp() {
   }
 
   // Порт
-  const defaultPort = type === 'vite' ? '80' : (type === 'nestjs' ? '3000' : '3000');
+  const defaultPort = type === 'vite' ? '80' : '3000';
   const portInput = await question(`\nПорт приложения [по умолчанию: ${defaultPort}]: `) || defaultPort;
   if (!/^\d+$/.test(portInput) || parseInt(portInput) < 1 || parseInt(portInput) > 65535) {
     console.error('❌ Порт должен быть числом от 1 до 65535');
@@ -97,10 +119,8 @@ async function createApp() {
 
   // Вызываем соответствующий генератор
   let result;
-  if (type === 'nodejs') {
-    result = createNodeJsApp(appDir, name, port);
-  } else if (type === 'nestjs') {
-    result = createNestJsApp(appDir, name, port);
+  if (type === 'node') {
+    result = createNodeApp(appDir, name, nodeVariant, port);
   } else if (type === 'vite') {
     result = createViteApp(appDir, name, viteFramework, port);
   }
