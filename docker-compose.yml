@@ -1,20 +1,20 @@
 services:
-  react-test:
+  "2":
     build:
       context: .
-      dockerfile: apps/react-test/Dockerfile
+      dockerfile: apps/2/Dockerfile
       target: ${DOCKER_TARGET:-development}
-    container_name: react-test
+    container_name: "2"
     ports:
-      - 5656:5656
+      - 3000:3000
     env_file:
-      - apps/react-test/.env
+      - apps/2/.env
     restart: unless-stopped
     develop:
       watch:
         - action: sync
-          path: ./apps/react-test
-          target: /app/apps/react-test
+          path: ./apps/2
+          target: /app/apps/2
         - action: sync
           path: ./packages
           target: /app/packages

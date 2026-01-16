@@ -64,8 +64,7 @@ export default App;
     devDependencies: {
       '@vitejs/plugin-react': '^4.2.0',
       '@types/react': '^18.2.0',
-      '@types/react-dom': '^18.2.0',
-      'vite': '^5.0.0'
+      '@types/react-dom': '^18.2.0'
     },
     scriptSrc: '/src/main.tsx',
     rootId: 'root',

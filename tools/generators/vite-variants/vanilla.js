@@ -51,9 +51,7 @@ button {
 
   return {
     dependencies: {},
-    devDependencies: {
-      'vite': '^5.0.0'
-    },
+    devDependencies: {},
     scriptSrc: '/src/main.ts',
     rootId: 'app',
     structure: [
