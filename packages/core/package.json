@@ -2,8 +2,5 @@
   "name": "@monorepo/core",
   "version": "1.0.0",
   "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "dependencies": {
-    "@monorepo/contract-page-2": "*"
-  }
+  "types": "./src/index.ts"
 }
