@@ -120,6 +120,8 @@ export default defineConfig({
   treeshake: true,
   sourcemap: true, // Включаем sourcemap в dev и production режимах
   watch: isDev, // Включаем watch режим при наличии аргумента dev
+  skipNodeModulesBundle: true,
+  unbundle: true,
   env: {
     NODE_ENV: isDev ? 'development' : 'production',
   },
