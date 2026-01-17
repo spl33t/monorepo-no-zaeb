@@ -19,9 +19,10 @@ function generateExpressFiles(appDir, name, port) {
   // src/index.ts
   const indexContent = `import { config } from 'dotenv';
 config({ path: '.env', override: true });
+
 import express from 'express';
 
-const PORT = process.env.PORT || ${port};
+const PORT = process.env.PORT!;
 const HOST = '0.0.0.0';
 
 const app = express();

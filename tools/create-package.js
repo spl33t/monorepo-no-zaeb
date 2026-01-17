@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const { execSync } = require('child_process');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -62,14 +63,24 @@ export function hello(name: string): string {
   console.log(`   │   └── index.ts`);
   console.log(`   └── package.json`);
 
+  // Закрываем readline перед выполнением npm install
+  rl.close();
+
+  // Автоматически устанавливаем зависимости только для нового пакета
+  console.log('\n📦 Устанавливаю зависимости для пакета...');
+  try {
+    execSync(`npm install --workspace=@monorepo/${name}`, {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+    console.log('\n✅ Зависимости установлены!');
+  } catch (error) {
+    console.warn('\n⚠️  Не удалось автоматически установить зависимости.');
+    console.log('   Выполните вручную: npm install --workspace=@monorepo/' + name);
+  }
+
   console.log('\n✅ Готово! Пакет доступен через:');
   console.log(`   import { ... } from '@monorepo/${name}';`);
-
-  console.log('\n📝 Следующие шаги:');
-  console.log(`   1. npm install`);
-  console.log(`   2. Используй в приложениях сразу!`);
-
-  rl.close();
 }
 
 createPackage().catch(err => {

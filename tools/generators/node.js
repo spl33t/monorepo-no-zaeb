@@ -25,6 +25,7 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   const packageJson = {
     name,
     version: '1.0.0',
+    type: 'module',
     main: './dist/index.cjs',
     scripts: {
       build: 'tsdown',
@@ -43,7 +44,8 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      outDir: './dist'
+      outDir: './dist',
+      moduleResolution: 'node16'
     },
     include: ['src/**/*']
   };

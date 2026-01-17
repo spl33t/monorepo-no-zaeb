@@ -67,7 +67,6 @@ export default App;
       '@types/react-dom': '^18.2.0'
     },
     scriptSrc: '/src/main.tsx',
-    rootId: 'root',
     structure: [
       '  ├── main.tsx',
       '  ├── App.tsx',

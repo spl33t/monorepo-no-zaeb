@@ -18,8 +18,8 @@ function question(query) {
 }
 
 const APP_TYPES = [
-  { key: 'node', name: 'Node.js приложение' },
-  { key: 'vite', name: 'Vite приложение (React/Vanilla)' }
+  { key: 'node', name: 'Node.js (express, nestjs)' },
+  { key: 'vite', name: 'Vite (react, vanilla)' }
 ];
 
 const NODE_VARIANTS = [

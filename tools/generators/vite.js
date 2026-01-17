@@ -29,8 +29,7 @@ function createViteApp(appDir, name, framework, port = '80') {
     scripts: {
       'dev': 'vite',
       'build': 'tsc && vite build',
-      'preview': 'vite preview',
-      'clean': 'rimraf dist'
+      'preview': 'vite preview'
     },
     dependencies: variantFiles.dependencies,
     devDependencies: variantFiles.devDependencies
@@ -45,20 +44,13 @@ function createViteApp(appDir, name, framework, port = '80') {
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      target: 'ES2020',
       useDefineForClassFields: true,
       lib: ['ES2020', 'DOM', 'DOM.Iterable'],
       module: 'ESNext',
-      skipLibCheck: true,
       moduleResolution: 'bundler',
       allowImportingTsExtensions: true,
-      resolveJsonModule: true,
       isolatedModules: true,
-      noEmit: true,
       jsx: framework === 'react' ? 'react-jsx' : 'preserve',
-      strict: true,
-      noUnusedLocals: true,
-      noUnusedParameters: true,
       noFallthroughCasesInSwitch: true
     },
     include: ['src']
@@ -77,7 +69,7 @@ function createViteApp(appDir, name, framework, port = '80') {
     <title>${name}</title>
   </head>
   <body>
-    <div id="${variantFiles.rootId}"></div>
+    <div id="root"></div>
     <script type="module" src="${variantFiles.scriptSrc}"></script>
   </body>
 </html>
@@ -162,7 +154,7 @@ README.md
       `npm run preview --workspace=${name}   # Превью сборки`
     ],
     nextSteps: [
-      'Открой http://localhost:5173'
+      `Открой http://localhost:${port}`
     ],
     envInfo: [
       'Переменные окружения:',

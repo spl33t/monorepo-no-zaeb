@@ -10,7 +10,7 @@ function generateVanillaFiles(appDir, name) {
   // src/main.ts
   const mainTs = `import './style.css';
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = \`
+document.querySelector<HTMLDivElement>('#root')!.innerHTML = \`
   <div>
     <h1>🚀 ${name}</h1>
     <p>Vite + Vanilla TypeScript приложение</p>
@@ -36,7 +36,7 @@ button.addEventListener('click', () => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-#app {
+#root {
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -53,7 +53,6 @@ button {
     dependencies: {},
     devDependencies: {},
     scriptSrc: '/src/main.ts',
-    rootId: 'app',
     structure: [
       '  ├── main.ts',
       '  ├── style.css',
