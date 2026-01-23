@@ -121,17 +121,6 @@ export default defineConfig({
         // Запускаем nodemon программно после первой сборки
         const nodemon = (await import('nodemon')).default;
 
-        // Получаем порт из .env файла с валидацией
-        // В dev режиме не завершаем процесс при ошибке, а ждём исправления
-        let port: number | null = null;
-        try {
-          port = getPortFromEnv();
-        } catch (error) {
-          console.error('⚠️  Ошибка чтения PORT из .env:', error instanceof Error ? error.message : String(error));
-          console.log('⏳ Ожидаю исправления .env файла...');
-          // Не завершаем процесс, nodemon будет перезапускаться при изменении .env
-        }
-
         nodemonInstance = nodemon({
           script: path.join(process.cwd(), 'dist', 'index.cjs'),
           watch: ['dist', '.env'],
@@ -148,7 +137,9 @@ export default defineConfig({
           .on('start', async () => {
             console.log('Nodemon started');
 
-            // Пытаемся получить порт, но не завершаем процесс при ошибке в dev режиме
+            // Получаем порт из .env файла с валидацией
+            // В dev режиме не завершаем процесс при ошибке, а ждём исправления
+            let port: number | null = null;
             try {
               port = getPortFromEnv();
             } catch (error) {
