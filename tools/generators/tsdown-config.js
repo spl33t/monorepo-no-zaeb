@@ -1,43 +1,27 @@
+const { generateGetPortFromEnvFunction } = require('./env-utils');
+
 /**
  * Генерирует tsdown.config.ts для Node.js приложений
  * @param {string} entryPath - Путь к entry файлу (например, 'src/main.ts' для NestJS или 'src/index.ts' для Node.js)
  * @returns {string} Содержимое tsdown.config.ts файла
  */
 function generateTsdownConfig(entryPath) {
+  const getPortFromEnvCode = generateGetPortFromEnvFunction({
+    useProcessCwd: true,
+    throwError: true // Используем исключения для единообразия
+  });
+
   return `import { defineConfig } from 'tsdown';
 import path from 'path';
 import { readFileSync } from 'fs';
 
-// Читаем PORT из .env файла с валидацией
-function getPortFromEnv(): number {
-  // Используем process.cwd() для получения рабочей директории (ES модули)
-  const envPath = path.resolve(process.cwd(), '.env');
-
-  // Проверяем существование файла
-  try {
-    readFileSync(envPath, 'utf-8');
-  } catch (error) {
-    console.error(\`❌ Файл .env не найден: \${envPath}\`);
-    process.exit(1);
-  }
-
-  // Читаем содержимое файла
-  const envContent = readFileSync(envPath, 'utf-8');
-  const portMatch = envContent.match(/^PORT=(\\d+)/m);
-
-  if (!portMatch) {
-    console.error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
-    process.exit(1);
-  }
-
-  return parseInt(portMatch[1], 10);
-}
+${getPortFromEnvCode}
 
 // Проверяем аргументы командной строки
 const args = process.argv.slice(2);
 const isDev = args.includes('--dev') || args.includes('dev') || process.env.NODE_ENV === 'development';
 
-let nodemonInstance: any = null;
+let nodemonInstance: import('nodemon').Nodemon | null = null;
 let typeCheckScheduled = false;
 
 // Функция для проверки доступности приложения через HTTP ping
@@ -138,7 +122,15 @@ export default defineConfig({
         const nodemon = (await import('nodemon')).default;
 
         // Получаем порт из .env файла с валидацией
-        let port = getPortFromEnv();
+        // В dev режиме не завершаем процесс при ошибке, а ждём исправления
+        let port: number | null = null;
+        try {
+          port = getPortFromEnv();
+        } catch (error) {
+          console.error('⚠️  Ошибка чтения PORT из .env:', error instanceof Error ? error.message : String(error));
+          console.log('⏳ Ожидаю исправления .env файла...');
+          // Не завершаем процесс, nodemon будет перезапускаться при изменении .env
+        }
 
         nodemonInstance = nodemon({
           script: path.join(process.cwd(), 'dist', 'index.cjs'),
@@ -156,14 +148,23 @@ export default defineConfig({
           .on('start', async () => {
             console.log('Nodemon started');
 
-            port = getPortFromEnv();
+            // Пытаемся получить порт, но не завершаем процесс при ошибке в dev режиме
+            try {
+              port = getPortFromEnv();
+            } catch (error) {
+              console.error('⚠️  Ошибка чтения PORT из .env:', error instanceof Error ? error.message : String(error));
+              console.log('⏳ Ожидаю исправления .env файла...');
+              return; // Пропускаем проверку готовности и проверку типов
+            }
 
             // Ждём, пока приложение запустится и ответит на HTTP ping
-            const isReady = await waitForAppReady(port);
-            if (isReady) {
-              // Проверяем типы после того, как приложение запустилось
-              // Ошибки выводятся автоматически через stdio: 'inherit'
-              await checkTypeScript();
+            if (port !== null) {
+              const isReady = await waitForAppReady(port);
+              if (isReady) {
+                // Проверяем типы после того, как приложение запустилось
+                // Ошибки выводятся автоматически через stdio: 'inherit'
+                await checkTypeScript();
+              }
             }
           })
           .on('restart', async () => {

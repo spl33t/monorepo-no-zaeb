@@ -1,3 +1,5 @@
+const { generateGetPortFromEnvFunction } = require('./env-utils');
+
 /**
  * Генерирует vite.config.ts для Vite приложений
  * @param {string} framework - 'react' или 'vanilla'
@@ -7,31 +9,16 @@ function generateViteConfig(framework) {
   const reactPluginImport = framework === 'react' ? "import react from '@vitejs/plugin-react';\n" : '';
   const reactPlugin = framework === 'react' ? '  plugins: [react()],\n' : '';
   
+  const getPortFromEnvCode = generateGetPortFromEnvFunction({
+    useProcessCwd: true, // Используем process.cwd() вместо __dirname для совместимости с ESM
+    throwError: true // Бросаем исключение для Vite конфига
+  });
+  
   return `import path from 'path';
 import { defineConfig } from 'vite';
 ${reactPluginImport}import { readFileSync } from 'fs';
 
-// Читаем PORT из .env файла
-function getPortFromEnv(): number {
-  const envPath = path.resolve(__dirname, '.env');
-  
-  // Проверяем существование файла
-  try {
-    readFileSync(envPath, 'utf-8');
-  } catch (error) {
-    throw new Error(\`❌ Файл .env не найден: \${envPath}\`);
-  }
-  
-  // Читаем содержимое файла
-  const envContent = readFileSync(envPath, 'utf-8');
-  const portMatch = envContent.match(/^PORT=(\\d+)/m);
-  
-  if (!portMatch) {
-    throw new Error(\`❌ Переменная PORT не найдена в файле .env: \${envPath}\`);
-  }
-  
-  return parseInt(portMatch[1], 10);
-}
+${getPortFromEnvCode}
 
 export default defineConfig({
 ${reactPlugin}  server: {

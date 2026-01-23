@@ -44,8 +44,7 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      outDir: './dist',
-      moduleResolution: 'node16'
+      outDir: './dist'
     },
     include: ['src/**/*']
   };
@@ -107,9 +106,9 @@ README.md
       `npm run build --workspace=${name}     # Сборка`,
       `npm run start --workspace=${name}     # Запуск собранного`
     ],
-    nextSteps: variant === 'nestjs' ? [
+    nextSteps: [
       `Открой http://localhost:${port}`
-    ] : undefined
+    ]
   };
 }
 
