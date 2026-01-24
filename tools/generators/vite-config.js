@@ -8,12 +8,12 @@ const { generateGetPortFromEnvFunction } = require('./env-utils');
 function generateViteConfig(framework) {
   const reactPluginImport = framework === 'react' ? "import react from '@vitejs/plugin-react';\n" : '';
   const reactPlugin = framework === 'react' ? '  plugins: [react()],\n' : '';
-  
+
   const getPortFromEnvCode = generateGetPortFromEnvFunction({
     useProcessCwd: true, // Используем process.cwd() вместо __dirname для совместимости с ESM
     throwError: true // Бросаем исключение для Vite конфига
   });
-  
+
   return `import path from 'path';
 import { defineConfig } from 'vite';
 ${reactPluginImport}import { readFileSync } from 'fs';
