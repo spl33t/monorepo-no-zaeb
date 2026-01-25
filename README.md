@@ -6,13 +6,13 @@ TypeScript монорепозиторий. Всё работает автома�
 
 ```bash
 # Установка
-npm install
+pnpm install
 
 # Создать пакет
-npm run create:package
+pnpm create:package
 
 # Создать приложение
-npm run create:app
+pnpm create:app
 ```
 
 ## Использование
@@ -21,13 +21,13 @@ npm run create:app
 
 ```bash
 # Разработка с автоперезапуском
-npm run dev --workspace=<app>
+pnpm --filter <app> dev
 
 # Сборка
-npm run build --workspace=<app>
+pnpm --filter <app> build
 
 # Запуск собранного
-npm run start --workspace=<app>
+pnpm --filter <app> start
 ```
 
 ### Импорт пакетов

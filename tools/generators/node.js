@@ -102,9 +102,9 @@ README.md
       '.dockerignore'
     ],
     commands: [
-      `npm run dev --workspace=${name}       # Dev режим`,
-      `npm run build --workspace=${name}     # Сборка`,
-      `npm run start --workspace=${name}     # Запуск собранного`
+      `pnpm --filter ${name} dev       # Dev режим`,
+      `pnpm --filter ${name} build     # Сборка`,
+      `pnpm --filter ${name} start     # Запуск собранного`
     ],
     nextSteps: [
       `Открой http://localhost:${port}`

@@ -9,39 +9,56 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Enable corepack for pnpm (will use version from packageManager field)
+RUN corepack enable
+
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
+
+# Copy tools directory (needed for preinstall script)
+COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
-RUN npm install
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY apps/${appName} ./apps/${appName}/
 
 # Build application
 WORKDIR /app/apps/${appName}
-RUN npm run build
+RUN pnpm run build
 
 # Development stage
 FROM node:20-alpine AS development
 
 WORKDIR /app
 
+# Enable corepack for pnpm (will use version from packageManager field)
+RUN corepack enable
+
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
+
+# Copy tools directory (needed for preinstall script)
+COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
-RUN npm install
+# В development режиме не используем --frozen-lockfile для гибкости
+RUN pnpm install
 
 # Copy source code
 COPY apps/${appName} ./apps/${appName}/
@@ -49,7 +66,7 @@ COPY apps/${appName} ./apps/${appName}/
 WORKDIR /app/apps/${appName}
 
 # Start dev server
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]
 
 # Production stage with nginx
 FROM nginx:alpine AS production

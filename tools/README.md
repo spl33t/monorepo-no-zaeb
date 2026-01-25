@@ -5,7 +5,7 @@ CLI утилиты для управления монорепозиторием.
 ## Создание нового приложения
 
 ```bash
-npm run create:app
+pnpm create:app
 ```
 
 Интерактивно создаст новое приложение:
@@ -53,7 +53,7 @@ apps/your-app/
 ## Создание нового пакета
 
 ```bash
-npm run create:package
+pnpm create:package
 ```
 
 Интерактивно создаст новый пакет:
@@ -75,7 +75,7 @@ packages/your-package/
 ### Создать NestJS приложение
 
 ```bash
-npm run create:app
+pnpm create:app
 # Тип: 2 (NestJS)
 # Название: api
 
@@ -87,7 +87,7 @@ npm run create:app
 ### Создать Vite React приложение
 
 ```bash
-npm run create:app
+pnpm create:app
 # Тип: 3 (Vite)
 # Фреймворк: 1 (React)
 
@@ -99,7 +99,7 @@ npm run create:app
 ### Создать пакет
 
 ```bash
-npm run create:package
+pnpm create:package
 # Название: validation
 
 # Результат:

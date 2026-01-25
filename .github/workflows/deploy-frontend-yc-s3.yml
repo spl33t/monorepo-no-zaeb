@@ -18,9 +18,9 @@ on:
         default: true
         type: boolean
       build_command:
-        description: 'Build command (default: npm run build)'
+        description: 'Build command (default: pnpm --filter <app> build, use {app} placeholder)'
         required: false
-        default: 'npm run build'
+        default: 'pnpm --filter {app} build'
         type: string
       build_output:
         description: 'Build output directory (default: dist)'
@@ -52,15 +52,24 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
       - name: Install dependencies
         run: |
           # Устанавливаем зависимости из корня проекта (для monorepo)
-          npm ci || npm install
+          pnpm install --frozen-lockfile
 
       - name: Build frontend
         run: |
-          cd apps/${{ github.event.inputs.app_name }}
-          ${{ github.event.inputs.build_command }}
+          # Используем команду из input или дефолтную, заменяем {app} на имя приложения
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          BUILD_CMD="${{ github.event.inputs.build_command }}"
+          BUILD_CMD=$(echo "$BUILD_CMD" | sed "s/{app}/$APP_NAME/g")
+          echo "🔨 Running: $BUILD_CMD"
+          eval "$BUILD_CMD"
         env:
           NODE_ENV: production
 

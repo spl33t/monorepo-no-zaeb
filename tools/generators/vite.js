@@ -40,8 +40,46 @@ function createViteApp(appDir, name, framework, port = '80') {
     JSON.stringify(packageJson, null, 2)
   );
 
-  // tsconfig.json
+  // tsconfig.json (основной файл с references)
   const tsconfig = {
+    files: [],
+    references: [
+      { path: './tsconfig.app.json' },
+      { path: './tsconfig.node.json' }
+    ]
+  };
+  fs.writeFileSync(
+    path.join(appDir, 'tsconfig.json'),
+    JSON.stringify(tsconfig, null, 2)
+  );
+
+  // tsconfig.node.json (для vite.config.ts)
+  const tsconfigNode = {
+    extends: '../../tsconfig.json',
+    compilerOptions: {
+      tsBuildInfoFile: './node_modules/.tmp/tsconfig.node.tsbuildinfo',
+      target: 'ES2023',
+      lib: ['ES2023'],
+      module: 'ESNext',
+      types: ['node'],
+      moduleResolution: 'bundler',
+      allowImportingTsExtensions: true,
+      verbatimModuleSyntax: true,
+      moduleDetection: 'force',
+      noUnusedLocals: true,
+      noUnusedParameters: true,
+      erasableSyntaxOnly: true,
+      noUncheckedSideEffectImports: true
+    },
+    include: ['vite.config.ts']
+  };
+  fs.writeFileSync(
+    path.join(appDir, 'tsconfig.node.json'),
+    JSON.stringify(tsconfigNode, null, 2)
+  );
+
+  // tsconfig.app.json (для приложения)
+  const tsconfigApp = {
     extends: '../../tsconfig.json',
     compilerOptions: {
       useDefineForClassFields: true,
@@ -56,8 +94,8 @@ function createViteApp(appDir, name, framework, port = '80') {
     include: ['src']
   };
   fs.writeFileSync(
-    path.join(appDir, 'tsconfig.json'),
-    JSON.stringify(tsconfig, null, 2)
+    path.join(appDir, 'tsconfig.app.json'),
+    JSON.stringify(tsconfigApp, null, 2)
   );
 
   // index.html
@@ -141,6 +179,8 @@ README.md
   structure.push('vite.config.ts');
   structure.push('package.json');
   structure.push('tsconfig.json');
+  structure.push('tsconfig.app.json');
+  structure.push('tsconfig.node.json');
   structure.push('.env');
   structure.push('.env.example');
   structure.push('Dockerfile');
@@ -149,9 +189,9 @@ README.md
   return {
     structure,
     commands: [
-      `npm run dev --workspace=${name}       # Dev сервер`,
-      `npm run build --workspace=${name}     # Сборка`,
-      `npm run preview --workspace=${name}   # Превью сборки`
+      `pnpm --filter ${name} dev       # Dev сервер`,
+      `pnpm --filter ${name} build     # Сборка`,
+      `pnpm --filter ${name} preview   # Превью сборки`
     ],
     nextSteps: [
       `Открой http://localhost:${port}`

@@ -58,13 +58,13 @@ export default App;
 
   return {
     dependencies: {
-      'react': '^18.2.0',
-      'react-dom': '^18.2.0'
+      'react': '^19.1.1',
+      'react-dom': '^19.1.1'
     },
     devDependencies: {
-      '@vitejs/plugin-react': '^4.2.0',
-      '@types/react': '^18.2.0',
-      '@types/react-dom': '^18.2.0'
+      '@vitejs/plugin-react': '^5.0.4',
+      '@types/react': '^19.0.0',
+      '@types/react-dom': '^19.0.0'
     },
     scriptSrc: '/src/main.tsx',
     structure: [

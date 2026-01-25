@@ -63,20 +63,20 @@ export function hello(name: string): string {
   console.log(`   │   └── index.ts`);
   console.log(`   └── package.json`);
 
-  // Закрываем readline перед выполнением npm install
+  // Закрываем readline перед выполнением pnpm install
   rl.close();
 
   // Автоматически устанавливаем зависимости только для нового пакета
   console.log('\n📦 Устанавливаю зависимости для пакета...');
   try {
-    execSync(`npm install --workspace=@monorepo/${name}`, {
+    execSync(`pnpm install --filter @monorepo/${name}`, {
       stdio: 'inherit',
       cwd: process.cwd()
     });
     console.log('\n✅ Зависимости установлены!');
   } catch (error) {
     console.warn('\n⚠️  Не удалось автоматически установить зависимости.');
-    console.log('   Выполните вручную: npm install --workspace=@monorepo/' + name);
+    console.log('   Выполните вручную: pnpm install --filter @monorepo/' + name);
   }
 
   console.log('\n✅ Готово! Пакет доступен через:');

@@ -9,39 +9,55 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Enable corepack for pnpm (will use version from packageManager field)
+RUN corepack enable
+
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
+
+# Copy tools directory (needed for preinstall script)
+COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
-RUN npm install
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY apps/${appName} ./apps/${appName}/
 
 # Build application
 WORKDIR /app/apps/${appName}
-RUN npm run build
+RUN pnpm run build
 
 # Production stage
 FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Enable corepack for pnpm (will use version from packageManager field)
+RUN corepack enable
+
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
+
+# Copy tools directory (needed for preinstall script)
+COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install only production dependencies
-RUN npm install --omit=dev
+RUN pnpm install --frozen-lockfile --prod
 
 # Copy built application from builder
 COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
@@ -49,23 +65,32 @@ COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
 WORKDIR /app/apps/${appName}
 
 # Start application
-CMD ["npm", "run", "start"]
+CMD ["pnpm", "run", "start"]
 
 # Development stage
 FROM node:20-alpine AS development
 
 WORKDIR /app
 
+# Enable corepack for pnpm (will use version from packageManager field)
+RUN corepack enable
+
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
+
+# Copy tools directory (needed for preinstall script)
+COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
-RUN npm install
+# В development режиме не используем --frozen-lockfile для гибкости
+RUN pnpm install
 
 # Copy source code
 COPY apps/${appName} ./apps/${appName}/
@@ -73,7 +98,7 @@ COPY apps/${appName} ./apps/${appName}/
 WORKDIR /app/apps/${appName}
 
 # Start in dev mode (with nodemon/ts-node)
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]
 `;
 }
 
