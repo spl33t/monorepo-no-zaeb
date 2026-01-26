@@ -22,14 +22,11 @@ COPY tsconfig.json ./
 COPY tools ./tools/
 
 # Copy workspace configuration
-COPY apps/${appName}/package.json ./apps/${appName}/
+COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY apps/${appName} ./apps/${appName}/
 
 # Build application
 WORKDIR /app/apps/${appName}
@@ -85,15 +82,12 @@ COPY tsconfig.json ./
 COPY tools ./tools/
 
 # Copy workspace configuration
-COPY apps/${appName}/package.json ./apps/${appName}/
+COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
 # В development режиме не используем --frozen-lockfile для гибкости
 RUN pnpm install
-
-# Copy source code
-COPY apps/${appName} ./apps/${appName}/
 
 WORKDIR /app/apps/${appName}
 
