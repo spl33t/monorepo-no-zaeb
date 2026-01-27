@@ -31,6 +31,7 @@ ${reactPlugin}  server: {
   },
   resolve: {
     alias: {
+      '@': path.resolve(process.cwd(), './src'),
       '@monorepo': path.resolve(__dirname, '../../packages')
     }
   }

@@ -89,7 +89,12 @@ function createViteApp(appDir, name, framework, port = '80') {
       allowImportingTsExtensions: true,
       isolatedModules: true,
       jsx: framework === 'react' ? 'react-jsx' : 'preserve',
-      noFallthroughCasesInSwitch: true
+      noFallthroughCasesInSwitch: true,
+      baseUrl: '.',
+      paths: {
+        '@/*': ['src/*'],
+        '@monorepo/*': ['../../packages/*/src']
+      }
     },
     include: ['src']
   };

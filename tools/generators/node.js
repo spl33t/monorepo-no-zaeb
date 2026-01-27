@@ -44,7 +44,12 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      outDir: './dist'
+      outDir: './dist',
+      baseUrl: '.',
+      paths: {
+        '@/*': ['src/*'],
+        '@monorepo/*': ['../../packages/*/src']
+      }
     },
     include: ['src/**/*']
   };
