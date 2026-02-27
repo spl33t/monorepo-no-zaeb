@@ -30,7 +30,8 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  
+  app.enableShutdownHooks();
+
   const port = process.env.PORT!; // Валидация выполняется в tsdown.config.ts
   const host = '0.0.0.0';
 
