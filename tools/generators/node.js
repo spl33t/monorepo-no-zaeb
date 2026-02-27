@@ -40,7 +40,7 @@ function createNodeApp(appDir, name, variant, port = '3000') {
     JSON.stringify(packageJson, null, 2)
   );
 
-  // tsconfig.json (общий для всех Node.js приложений)
+  // tsconfig.json (общий для всех Node.js/tsdown приложений)
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
@@ -51,7 +51,7 @@ function createNodeApp(appDir, name, variant, port = '3000') {
         '@monorepo/*': ['../../packages/*/src']
       }
     },
-    include: ['src/**/*']
+    include: ['src/**/*', '../../packages/*/src/**/*']
   };
   fs.writeFileSync(
     path.join(appDir, 'tsconfig.json'),

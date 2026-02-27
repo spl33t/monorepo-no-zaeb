@@ -14,6 +14,7 @@ function generateTsdownConfig(entryPath) {
   return `import { defineConfig } from 'tsdown';
 import path from 'path';
 import { readFileSync } from 'fs';
+import typescript from '@rollup/plugin-typescript';
 
 ${getPortFromEnvCode}
 
@@ -104,6 +105,13 @@ export default defineConfig({
   treeshake: true,
   sourcemap: true, // Включаем sourcemap в dev и production режимах
   watch: isDev, // Включаем watch режим при наличии аргумента dev
+  plugins: [
+    typescript({
+      incremental: isDev,
+      tsconfig: './tsconfig.json',
+      filterRoot: path.resolve(process.cwd(), '../..'),
+    }),
+  ],
   skipNodeModulesBundle: true,
   unbundle: true,
   env: {
