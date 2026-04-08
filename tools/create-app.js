@@ -33,6 +33,140 @@ const VITE_FRAMEWORKS = [
   { key: 'vanilla', name: 'Vanilla HTML + TypeScript' }
 ];
 
+const KIND_ALIASES = {
+  nestjs: { type: 'node', nodeVariant: 'nestjs' },
+  express: { type: 'node', nodeVariant: 'express' },
+  'vite-react': { type: 'vite', viteFramework: 'react' },
+  'vite-vanilla': { type: 'vite', viteFramework: 'vanilla' }
+};
+
+function printHelp() {
+  console.log(`
+Создание приложения (интерактивно):
+  pnpm create:app
+
+Одна команда (без вопросов):
+  pnpm create:app -- --kind nestjs [--name api] [--port 3000] [--no-install]
+  pnpm create:app -- --kind express [--name api]
+  pnpm create:app -- --kind vite-react [--name web]
+  pnpm create:app -- --kind vite-vanilla [--name static]
+
+То же через тип и вариант:
+  pnpm create:app -- --type node --variant nestjs [--name api]
+  pnpm create:app -- --type vite --variant react [--name web]
+
+Флаги:
+  --kind      nestjs | express | vite-react | vite-vanilla
+  --type      node | vite (вместе с --variant)
+  --variant   для node: nestjs | express; для vite: react | vanilla
+  --name      только a-z, 0-9, дефис (по умолчанию: свободное имя по варианту)
+  --port      число 1–65535 (по умолчанию: как в мастере, с учётом занятых портов)
+  --no-install   не запускать pnpm install в конце
+`);
+}
+
+function parseCliArgs(argv) {
+  const out = {
+    help: false,
+    kind: null,
+    type: null,
+    variant: null,
+    name: null,
+    port: null,
+    noInstall: false
+  };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '-h' || a === '--help') {
+      out.help = true;
+      continue;
+    }
+    if (a === '--no-install') {
+      out.noInstall = true;
+      continue;
+    }
+    const take = flag => {
+      const v = argv[i + 1];
+      if (!v || v.startsWith('-')) {
+        throw new Error(`Ожидается значение после ${flag}`);
+      }
+      i++;
+      return v;
+    };
+    if (a === '--kind') {
+      out.kind = take('--kind');
+      continue;
+    }
+    if (a === '--type') {
+      out.type = take('--type');
+      continue;
+    }
+    if (a === '--variant') {
+      out.variant = take('--variant');
+      continue;
+    }
+    if (a === '--name') {
+      out.name = take('--name').trim();
+      continue;
+    }
+    if (a === '--port') {
+      out.port = take('--port');
+      continue;
+    }
+    if (a.startsWith('-')) {
+      throw new Error(`Неизвестный флаг: ${a}. См. pnpm create:app -- --help`);
+    }
+  }
+  return out;
+}
+
+function resolveCliSelection(cli) {
+  if (cli.help) {
+    printHelp();
+    process.exit(0);
+  }
+  let type;
+  let nodeVariant;
+  let viteFramework;
+
+  if (cli.kind) {
+    const spec = KIND_ALIASES[cli.kind];
+    if (!spec) {
+      console.error(`❌ Неизвестный --kind "${cli.kind}". Допустимо: ${Object.keys(KIND_ALIASES).join(', ')}`);
+      process.exit(1);
+    }
+    type = spec.type;
+    nodeVariant = spec.nodeVariant;
+    viteFramework = spec.viteFramework;
+  } else if (cli.type || cli.variant) {
+    if (!cli.type || !cli.variant) {
+      console.error('❌ Укажите оба флага: --type и --variant (или один --kind)');
+      process.exit(1);
+    }
+    type = cli.type;
+    if (type === 'node') {
+      if (!NODE_VARIANTS.some(v => v.key === cli.variant)) {
+        console.error(`❌ Для --type node допустим --variant: ${NODE_VARIANTS.map(v => v.key).join(', ')}`);
+        process.exit(1);
+      }
+      nodeVariant = cli.variant;
+    } else if (type === 'vite') {
+      if (!VITE_FRAMEWORKS.some(v => v.key === cli.variant)) {
+        console.error(`❌ Для --type vite допустим --variant: ${VITE_FRAMEWORKS.map(v => v.key).join(', ')}`);
+        process.exit(1);
+      }
+      viteFramework = cli.variant;
+    } else {
+      console.error('❌ --type должен быть node или vite');
+      process.exit(1);
+    }
+  } else {
+    return null;
+  }
+
+  return { type, nodeVariant, viteFramework, runInstall: !cli.noInstall, nameArg: cli.name, portArg: cli.port };
+}
+
 /**
  * Генерирует дефолтное имя приложения на основе фреймворка
  * Если приложение с таким именем уже существует, добавляет нумерацию
@@ -130,92 +264,9 @@ function getAvailablePort(defaultPort) {
   return port.toString();
 }
 
-async function createApp() {
-  console.log('\n🚀 Создание нового приложения\n');
-
-  // Выбор типа
-  console.log('Выберите тип приложения:');
-  APP_TYPES.forEach((type, index) => {
-    console.log(`  ${index + 1}. ${type.name}`);
-  });
-  
-  const choice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
-  const typeIndex = parseInt(choice) - 1;
-  
-  if (typeIndex < 0 || typeIndex >= APP_TYPES.length) {
-    console.error(`❌ Неверный выбор. Введите число от 1 до ${APP_TYPES.length}`);
-    process.exit(1);
-  }
-  
-  const type = APP_TYPES[typeIndex].key;
-
-  // Дополнительные вопросы для Node.js
-  let nodeVariant = 'nestjs';
-  if (type === 'node') {
-    console.log('\nВыберите вариант Node.js приложения:');
-    NODE_VARIANTS.forEach((variant, index) => {
-      console.log(`  ${index + 1}. ${variant.name}`);
-    });
-    
-    const variantChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
-    const variantIndex = parseInt(variantChoice) - 1;
-    
-    if (variantIndex < 0 || variantIndex >= NODE_VARIANTS.length) {
-      console.error(`❌ Неверный выбор. Введите число от 1 до ${NODE_VARIANTS.length}`);
-      process.exit(1);
-    }
-    
-    nodeVariant = NODE_VARIANTS[variantIndex].key;
-  }
-
-  // Дополнительные вопросы для Vite
-  let viteFramework = 'react';
-  if (type === 'vite') {
-    console.log('\nВыберите фреймворк:');
-    VITE_FRAMEWORKS.forEach((fw, index) => {
-      console.log(`  ${index + 1}. ${fw.name}`);
-    });
-    
-    const fwChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
-    const fwIndex = parseInt(fwChoice) - 1;
-    
-    if (fwIndex < 0 || fwIndex >= VITE_FRAMEWORKS.length) {
-      console.error(`❌ Неверный выбор. Введите число от 1 до ${VITE_FRAMEWORKS.length}`);
-      process.exit(1);
-    }
-    
-    viteFramework = VITE_FRAMEWORKS[fwIndex].key;
-  }
-
-  // Определяем дефолтное имя на основе выбранного фреймворка
-  let defaultName;
-  if (type === 'node') {
-    defaultName = getDefaultAppName(nodeVariant);
-  } else if (type === 'vite') {
-    defaultName = getDefaultAppName(viteFramework);
-  }
-
-  // Название
-  const nameInput = await question(`\nНазвание приложения [по умолчанию: ${defaultName}]: `) || defaultName;
-  const name = nameInput.trim();
-  
-  if (!name || !/^[a-z0-9-]+$/.test(name)) {
-    console.error('❌ Название должно содержать только a-z, 0-9, -');
-    process.exit(1);
-  }
-
-  // Порт
-  const baseDefaultPort = type === 'vite' ? '80' : '3000';
-  const defaultPort = getAvailablePort(baseDefaultPort);
-  const portInput = await question(`\nПорт приложения [по умолчанию: ${defaultPort}]: `) || defaultPort;
-  if (!/^\d+$/.test(portInput) || parseInt(portInput) < 1 || parseInt(portInput) > 65535) {
-    console.error('❌ Порт должен быть числом от 1 до 65535');
-    process.exit(1);
-  }
-  const port = portInput;
-
+async function scaffoldApp({ type, nodeVariant, viteFramework, name, port }) {
   const appDir = path.join(process.cwd(), 'apps', name);
-  
+
   if (fs.existsSync(appDir)) {
     console.error(`❌ Приложение "${name}" уже существует`);
     process.exit(1);
@@ -223,10 +274,8 @@ async function createApp() {
 
   console.log(`\n📦 Создаю приложение "${name}" типа "${type}" на порту ${port}...\n`);
 
-  // Создаем структуру директорий
   fs.mkdirSync(path.join(appDir, 'src'), { recursive: true });
 
-  // Вызываем соответствующий генератор
   let result;
   if (type === 'node') {
     result = createNodeApp(appDir, name, nodeVariant, port);
@@ -234,16 +283,14 @@ async function createApp() {
     result = createViteApp(appDir, name, viteFramework, port);
   }
 
-  // Выводим структуру
   console.log('✅ Структура создана:');
   console.log(`   apps/${name}/`);
   result.structure.forEach(line => console.log(`   ${line}`));
 
-  // Выводим инструкции
   console.log('\n📝 Следующие шаги:');
   console.log(`   1. pnpm install`);
   console.log(`   2. pnpm --filter ${name} dev`);
-  
+
   if (result.nextSteps) {
     result.nextSteps.forEach(step => console.log(`   ${step}`));
   }
@@ -256,7 +303,6 @@ async function createApp() {
     result.envInfo.slice(1).forEach(info => console.log(`   ${info}`));
   }
 
-  // Автоматически добавляем приложение в docker-compose.yml
   console.log('\n🐳 Добавляю приложение в docker-compose.yml...');
   try {
     const { addAppToDockerCompose } = require('./create-docker-compose');
@@ -268,32 +314,165 @@ async function createApp() {
     console.warn(`\n⚠️  Не удалось добавить приложение в docker-compose.yml: ${error.message}`);
     console.log(`   Вы можете добавить его вручную: pnpm create:docker-compose`);
   }
+}
 
-  // Спрашиваем об установке зависимостей
-  console.log('\n📦 Установка зависимостей');
-  const installDeps = await question('Установить зависимости? (y/n) [по умолчанию: y]: ') || 'y';
-  
-  if (installDeps.toLowerCase() === 'y' || installDeps.toLowerCase() === 'yes') {
-    console.log('\n📦 Устанавливаю зависимости...');
-    try {
-      execSync('pnpm install', {
-        stdio: 'inherit',
-        cwd: process.cwd()
-      });
-      console.log('\n✅ Зависимости установлены!');
-    } catch (error) {
-      console.warn('\n⚠️  Не удалось автоматически установить зависимости.');
-      console.log('   Выполните вручную: pnpm install');
-    }
-  } else {
+async function maybeInstallDependencies(shouldInstall) {
+  if (!shouldInstall) {
     console.log('\n⏭️  Пропущена установка зависимостей.');
     console.log('   Выполните вручную: pnpm install');
+    return;
   }
+  console.log('\n📦 Устанавливаю зависимости...');
+  try {
+    execSync('pnpm install', {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+    console.log('\n✅ Зависимости установлены!');
+  } catch {
+    console.warn('\n⚠️  Не удалось автоматически установить зависимости.');
+    console.log('   Выполните вручную: pnpm install');
+  }
+}
+
+async function interactiveCreateApp() {
+  console.log('\n🚀 Создание нового приложения\n');
+
+  console.log('Выберите тип приложения:');
+  APP_TYPES.forEach((type, index) => {
+    console.log(`  ${index + 1}. ${type.name}`);
+  });
+
+  const choice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
+  const typeIndex = parseInt(choice) - 1;
+
+  if (typeIndex < 0 || typeIndex >= APP_TYPES.length) {
+    console.error(`❌ Неверный выбор. Введите число от 1 до ${APP_TYPES.length}`);
+    process.exit(1);
+  }
+
+  const type = APP_TYPES[typeIndex].key;
+
+  let nodeVariant = 'nestjs';
+  if (type === 'node') {
+    console.log('\nВыберите вариант Node.js приложения:');
+    NODE_VARIANTS.forEach((variant, index) => {
+      console.log(`  ${index + 1}. ${variant.name}`);
+    });
+
+    const variantChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
+    const variantIndex = parseInt(variantChoice) - 1;
+
+    if (variantIndex < 0 || variantIndex >= NODE_VARIANTS.length) {
+      console.error(`❌ Неверный выбор. Введите число от 1 до ${NODE_VARIANTS.length}`);
+      process.exit(1);
+    }
+
+    nodeVariant = NODE_VARIANTS[variantIndex].key;
+  }
+
+  let viteFramework = 'react';
+  if (type === 'vite') {
+    console.log('\nВыберите фреймворк:');
+    VITE_FRAMEWORKS.forEach((fw, index) => {
+      console.log(`  ${index + 1}. ${fw.name}`);
+    });
+
+    const fwChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
+    const fwIndex = parseInt(fwChoice) - 1;
+
+    if (fwIndex < 0 || fwIndex >= VITE_FRAMEWORKS.length) {
+      console.error(`❌ Неверный выбор. Введите число от 1 до ${VITE_FRAMEWORKS.length}`);
+      process.exit(1);
+    }
+
+    viteFramework = VITE_FRAMEWORKS[fwIndex].key;
+  }
+
+  let defaultName;
+  if (type === 'node') {
+    defaultName = getDefaultAppName(nodeVariant);
+  } else if (type === 'vite') {
+    defaultName = getDefaultAppName(viteFramework);
+  }
+
+  const nameInput = await question(`\nНазвание приложения [по умолчанию: ${defaultName}]: `) || defaultName;
+  const name = nameInput.trim();
+
+  if (!name || !/^[a-z0-9-]+$/.test(name)) {
+    console.error('❌ Название должно содержать только a-z, 0-9, -');
+    process.exit(1);
+  }
+
+  const baseDefaultPort = type === 'vite' ? '80' : '3000';
+  const defaultPort = getAvailablePort(baseDefaultPort);
+  const portInput = await question(`\nПорт приложения [по умолчанию: ${defaultPort}]: `) || defaultPort;
+  if (!/^\d+$/.test(portInput) || parseInt(portInput) < 1 || parseInt(portInput) > 65535) {
+    console.error('❌ Порт должен быть числом от 1 до 65535');
+    process.exit(1);
+  }
+  const port = portInput;
+
+  await scaffoldApp({ type, nodeVariant, viteFramework, name, port });
+
+  console.log('\n📦 Установка зависимостей');
+  const installDeps = await question('Установить зависимости? (y/n) [по умолчанию: y]: ') || 'y';
+  const yes = installDeps.toLowerCase() === 'y' || installDeps.toLowerCase() === 'yes';
+  await maybeInstallDependencies(yes);
 
   rl.close();
 }
 
-createApp().catch(err => {
+async function main() {
+  let cli;
+  try {
+    cli = parseCliArgs(process.argv);
+  } catch (e) {
+    console.error('❌', e.message);
+    printHelp();
+    process.exit(1);
+  }
+
+  const resolved = resolveCliSelection(cli);
+
+  if (resolved) {
+    const { type, nodeVariant, viteFramework, runInstall, nameArg, portArg } = resolved;
+
+    let name = nameArg;
+    if (!name) {
+      name = type === 'node' ? getDefaultAppName(nodeVariant) : getDefaultAppName(viteFramework);
+    }
+
+    if (!name || !/^[a-z0-9-]+$/.test(name)) {
+      console.error('❌ Название должно содержать только a-z, 0-9, -');
+      process.exit(1);
+    }
+
+    const baseDefaultPort = type === 'vite' ? '80' : '3000';
+    let port = portArg;
+    if (!port) {
+      port = getAvailablePort(baseDefaultPort);
+    } else if (!/^\d+$/.test(port) || parseInt(port, 10) < 1 || parseInt(port, 10) > 65535) {
+      console.error('❌ Порт должен быть числом от 1 до 65535');
+      process.exit(1);
+    }
+
+    await scaffoldApp({ type, nodeVariant, viteFramework, name, port });
+    await maybeInstallDependencies(runInstall);
+    return;
+  }
+
+  const onlyFlags = process.argv.slice(2).some(a => a.startsWith('-'));
+  if (onlyFlags) {
+    console.error('❌ Недостаточно аргументов. Укажите --kind … или --type … и --variant …');
+    printHelp();
+    process.exit(1);
+  }
+
+  await interactiveCreateApp();
+}
+
+main().catch(err => {
   console.error('❌ Ошибка:', err.message);
   process.exit(1);
 });
