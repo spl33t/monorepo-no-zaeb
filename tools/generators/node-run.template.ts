@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync, type ChildProcessByStdio } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { type Readable } from "node:stream";
 import ts from "typescript";
@@ -13,8 +13,10 @@ type RunningChild = ChildProcessByStdio<null, Readable, Readable>;
 type SpawnOptions = { cmd: string; args?: string[]; shell: boolean };
 
 const COMMANDS: Command[] = ["dev", "build", "start"];
-const ENTRY = path.join(process.cwd(), "dist/index.cjs");
+const ENTRY = path.join(process.cwd(), "dist", "index.cjs");
+const READY_FILE = path.join(process.cwd(), "dist", ".ready");
 const ENV_FILE = path.join(process.cwd(), ".env");
+const POLL_MS = 50;
 const TSDOWN_CMD = "pnpm exec tsdown";
 const STDIO_PIPE: ["ignore", "pipe", "pipe"] = ["ignore", "pipe", "pipe"];
 const TSC_OPTIONS: ts.CompilerOptions = { noEmit: true };
@@ -30,7 +32,7 @@ function printHelp() {
   process.stderr.write(`Использование: run <команда> [опции]
 
 Команды (как в vite):
-  dev       BUILDER_MODE=dev — tsdown watch + tsc watch + node --watch
+  dev       BUILDER_MODE=dev — tsdown watch + tsc watch + node (restart on .ready / .env)
   build     BUILDER_MODE=prod — tsc --noEmit, затем tsdown
   start     node dist/index.cjs (после сборки)
 
@@ -171,6 +173,85 @@ function trackProcess(p: RunningChild, name: ProcName) {
   p.on("exit", () => tasks.delete(p));
 }
 
+function spawnNode(): RunningChild {
+  return spawn(process.execPath, ["--enable-source-maps", ENTRY], {
+    env: childEnv(),
+    stdio: STDIO_PIPE,
+  });
+}
+
+let nodeProcess: RunningChild | null = null;
+let restartQueue = Promise.resolve();
+let stopping = false;
+
+const readyPoll = { last: null as number | null, restartOnFirst: true };
+const envPoll = { last: null as number | null, restartOnFirst: false };
+
+function pollMtime(
+  file: string,
+  state: { last: number | null; restartOnFirst: boolean },
+) {
+  try {
+    if (!existsSync(file)) return;
+    const mtime = statSync(file).mtimeMs;
+
+    if (state.last === null) {
+      state.last = mtime;
+      if (state.restartOnFirst) queueNodeRestart();
+      return;
+    }
+
+    if (mtime !== state.last) {
+      state.last = mtime;
+      queueNodeRestart();
+    }
+  } catch {}
+}
+
+async function stopNodeProcess() {
+  if (stopping) return;
+  stopping = true;
+
+  const proc = nodeProcess;
+  nodeProcess = null;
+
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+    stopping = false;
+    return;
+  }
+
+  proc.kill("SIGTERM");
+  await new Promise<void>((resolve) => proc.once("exit", () => resolve()));
+
+  stopping = false;
+}
+
+async function restartNode() {
+  if (shuttingDown) return;
+
+  await stopNodeProcess();
+  if (shuttingDown) return;
+
+  nodeProcess = spawnNode();
+  trackProcess(nodeProcess, "node");
+}
+
+function queueNodeRestart() {
+  restartQueue = restartQueue.then(() => restartNode()).catch((err: Error) => {
+    process.stderr.write(`[node] restart failed: ${err.message}\n`);
+  });
+}
+
+function watchDevRestarts() {
+  const tick = () => {
+    pollMtime(READY_FILE, readyPoll);
+    pollMtime(ENV_FILE, envPoll);
+  };
+
+  tick();
+  setInterval(tick, POLL_MS);
+}
+
 function spawnLabeled(name: ProcName, options: SpawnOptions, sync = false): number | RunningChild {
   const env = childEnv();
 
@@ -209,13 +290,8 @@ function runDev() {
   process.on("SIGTERM", shutdown);
 
   spawnLabeled("tsdown", { cmd: TSDOWN_CMD, shell: true });
-  // как nodemon watch: ['dist', '.env'] — dist через --watch на entry, .env через --watch-path
-  spawnLabeled("node", {
-    cmd: process.execPath,
-    args: ["--enable-source-maps", "--watch", "--watch-path", ENV_FILE, ENTRY],
-    shell: false,
-  });
   runTsc({ mode: "watch" });
+  watchDevRestarts();
 }
 
 function runBuild() {
@@ -230,10 +306,7 @@ function runStart() {
     process.exit(1);
   }
 
-  const child = spawn(process.execPath, [ENTRY], {
-    stdio: ["inherit", "pipe", "pipe"],
-    env: childEnv(),
-  });
+  const child = spawnNode();
   trackProcess(child, "node");
   child.on("exit", (code) => process.exit(code ?? 0));
   child.on("error", () => process.exit(1));

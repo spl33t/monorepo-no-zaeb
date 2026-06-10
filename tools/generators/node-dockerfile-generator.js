@@ -15,7 +15,6 @@ RUN corepack enable
 # Copy root package files
 COPY package*.json ./
 COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
 
 # Copy tools directory (needed for preinstall script)
@@ -26,7 +25,7 @@ COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 # Build application
 WORKDIR /app/apps/${appName}
@@ -43,7 +42,6 @@ RUN corepack enable
 # Copy root package files
 COPY package*.json ./
 COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
 
 # Copy tools directory (needed for preinstall script)
@@ -54,10 +52,13 @@ COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
 # Install only production dependencies
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --prod
 
-# Copy built application from builder
+# Copy built application and run orchestrator from builder
 COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
+COPY --from=builder /app/apps/${appName}/run.ts ./apps/${appName}/run.ts
+COPY --from=builder /app/apps/${appName}/tsconfig.json ./apps/${appName}/tsconfig.json
+COPY --from=builder /app/node_modules/typescript ./node_modules/typescript
 
 WORKDIR /app/apps/${appName}
 
@@ -75,7 +76,6 @@ RUN corepack enable
 # Copy root package files
 COPY package*.json ./
 COPY pnpm-workspace.yaml ./
-COPY pnpm-lock.yaml ./
 COPY tsconfig.json ./
 
 # Copy tools directory (needed for preinstall script)
@@ -86,12 +86,11 @@ COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
-# В development режиме не используем --frozen-lockfile для гибкости
 RUN pnpm install
 
 WORKDIR /app/apps/${appName}
 
-# Start in dev mode (run.ts: tsdown watch + tsc + node --watch)
+# Start in dev mode (run.ts: tsdown watch + tsc + node, restart on .ready / .env)
 CMD ["pnpm", "run", "dev"]
 `;
 }

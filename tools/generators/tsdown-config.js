@@ -13,7 +13,7 @@ function generateTsdownConfig(entryPath) {
 
   return `import { defineConfig } from 'tsdown'
 import path from 'path'
-import { readFileSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 /** Режим сборщика tsdown. Не путать с NODE_ENV рантайма. */
 export type BuilderMode = 'dev' | 'prod'
@@ -62,6 +62,9 @@ export function resolveBuilderMode(argv = args): BuilderMode {
 /** PORT из .env — проверяем до сборки (см. hooks). */
 ${getPortFromEnvCode}
 
+/** Метка готовности dev-сборки — run.ts перезапускает node при изменении mtime в build:done. */
+const READY_FILE = path.join(process.cwd(), 'dist', '.ready')
+
 const builderMode = resolveBuilderMode()
 const mode = builderModeConfig[builderMode]
 
@@ -92,6 +95,11 @@ export default defineConfig({
   hooks: {
     'build:prepare': async () => {
       getPortFromEnv()
+    },
+    'build:done': async () => {
+      if (builderMode !== 'dev') return
+      mkdirSync(path.dirname(READY_FILE), { recursive: true })
+      writeFileSync(READY_FILE, Date.now().toString())
     },
   },
 })

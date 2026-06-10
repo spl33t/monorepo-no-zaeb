@@ -14,6 +14,8 @@
     "create:package": "node tools/create-package.js",
     "create:docker-compose": "node tools/create-docker-compose.js",
     "mcp:add-postgres": "node tools/add-mcp-postgres.js",
+    "--------------------------------Utils-------------------------------------------": "",
+    "kill:port": "node tools/kill-port.js",
     "--------------------------------Docker-----------------------------------------": "",
     "docker:manager": "node tools/docker-compose-manager.js",
     "docker:up-all": "cross-env DOCKER_TARGET=production docker compose up --build",

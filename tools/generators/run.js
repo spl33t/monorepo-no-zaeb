@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Генерирует run.ts — dev/build/start оркестратор для Node.js приложений
+ * Генерирует run.ts — dev/build оркестратор для Node.js приложений
  * @returns {string}
  */
 function generateRunScript() {

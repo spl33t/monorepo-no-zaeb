@@ -63,7 +63,7 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   const tsdownConfig = generateTsdownConfig(variantFiles.entryPath);
   fs.writeFileSync(path.join(appDir, 'tsdown.config.ts'), tsdownConfig);
 
-  // run.ts — dev/build/start оркестратор (tsdown + tsc + node --watch)
+  // run.ts — dev/build/start оркестратор (tsdown + tsc + node, restart по .ready / .env)
   fs.writeFileSync(path.join(appDir, 'run.ts'), generateRunScript());
 
   // .env.example (общий)
