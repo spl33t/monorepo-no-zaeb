@@ -5,7 +5,7 @@
  */
 function generateNodeDockerfile(appName) {
   return `# Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ WORKDIR /app/apps/${appName}
 RUN pnpm run build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /app
 
@@ -65,7 +65,7 @@ WORKDIR /app/apps/${appName}
 CMD ["pnpm", "run", "start"]
 
 # Development stage
-FROM node:20-alpine AS development
+FROM node:22-alpine AS development
 
 WORKDIR /app
 
@@ -91,7 +91,7 @@ RUN pnpm install
 
 WORKDIR /app/apps/${appName}
 
-# Start in dev mode (with nodemon/ts-node)
+# Start in dev mode (run.ts: tsdown watch + tsc + node --watch)
 CMD ["pnpm", "run", "dev"]
 `;
 }

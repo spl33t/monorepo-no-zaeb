@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { generateTsdownConfig } = require('./tsdown-config');
+const { generateRunScript } = require('./run');
 const { generateNodeDockerfile } = require('./node-dockerfile-generator');
 const { generateNestJsFiles } = require('./node-variants/nestjs');
 const { generateExpressFiles } = require('./node-variants/express');
@@ -28,9 +29,9 @@ function createNodeApp(appDir, name, variant, port = '3000') {
     type: 'module',
     main: './dist/index.cjs',
     scripts: {
-      build: 'tsdown',
-      dev: 'tsdown --dev',
-      start: 'node --enable-source-maps dist/index.cjs'
+      dev: 'node --experimental-strip-types run.ts dev',
+      build: 'node --experimental-strip-types run.ts build',
+      start: 'node --experimental-strip-types run.ts start'
     },
     dependencies: variantFiles.dependencies,
     devDependencies: variantFiles.devDependencies
@@ -61,6 +62,9 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   // tsdown.config.ts (общий, но с разными entry путями)
   const tsdownConfig = generateTsdownConfig(variantFiles.entryPath);
   fs.writeFileSync(path.join(appDir, 'tsdown.config.ts'), tsdownConfig);
+
+  // run.ts — dev/build/start оркестратор (tsdown + tsc + node --watch)
+  fs.writeFileSync(path.join(appDir, 'run.ts'), generateRunScript());
 
   // .env.example (общий)
   const envExample = `# Environment variables
@@ -101,6 +105,7 @@ README.md
       'package.json',
       'tsconfig.json',
       'tsdown.config.ts',
+      'run.ts',
       '.env',
       '.env.example',
       'Dockerfile',

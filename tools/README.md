@@ -32,7 +32,8 @@ apps/your-app/
 │   └── index.ts (или main.ts для NestJS)
 ├── package.json
 ├── tsconfig.json
-├── nodemon.json
+├── tsdown.config.ts
+├── run.ts
 └── .env.example
 ```
 
