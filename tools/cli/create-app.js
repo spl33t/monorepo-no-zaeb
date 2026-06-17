@@ -6,8 +6,8 @@ const readline = require('readline');
 const { execSync } = require('child_process');
 
 // Импортируем генераторы
-const { createNodeApp } = require('./generators/node');
-const { createViteApp } = require('./generators/vite');
+const { createNodeApp } = require('../generators/node');
+const { createViteApp } = require('../generators/vite');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -305,7 +305,7 @@ async function scaffoldApp({ type, nodeVariant, viteFramework, name, port }) {
 
   console.log('\n🐳 Добавляю приложение в docker-compose.yml...');
   try {
-    const { addAppToDockerCompose } = require('./create-docker-compose');
+    const { addAppToDockerCompose } = require('./create-docker-compose.js');
     await addAppToDockerCompose(name);
     console.log('\n💡 Docker команды:');
     console.log(`   pnpm docker:up-all              # Запустить все сервисы (production)`);

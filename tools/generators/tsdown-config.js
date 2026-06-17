@@ -1,4 +1,4 @@
-const { generateGetPortFromEnvFunction } = require('./env-utils');
+const { generateGetPortFromEnvFunction } = require('../lib/env-utils');
 
 /**
  * Генерирует tsdown.config.ts для Node.js приложений
@@ -14,6 +14,7 @@ function generateTsdownConfig(entryPath) {
   return `import { defineConfig } from 'tsdown'
 import path from 'path'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { runtimePackagesPlugin } from '../../tools/plugins/runtime-packages-plugin.mjs'
 
 /** Режим сборщика tsdown. Не путать с NODE_ENV рантайма. */
 export type BuilderMode = 'dev' | 'prod'
@@ -91,6 +92,8 @@ export default defineConfig({
   env: {
     BUILDER_MODE: builderMode,
   },
+
+  plugins: [runtimePackagesPlugin()],
 
   hooks: {
     'build:prepare': async () => {

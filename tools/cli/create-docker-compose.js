@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { parseDockerCompose, stringifyDockerCompose } = require('./docker-compose-parser');
+const { parseDockerCompose, stringifyDockerCompose } = require('../lib/docker-compose-parser');
 
 const rl = readline.createInterface({
   input: process.stdin,

@@ -20,6 +20,7 @@ const POLL_MS = 50;
 const TSDOWN_CMD = "pnpm exec tsdown";
 const STDIO_PIPE: ["ignore", "pipe", "pipe"] = ["ignore", "pipe", "pipe"];
 const TSC_OPTIONS: ts.CompilerOptions = { noEmit: true };
+const TS_CANNOT_FIND_MODULE = 2307;
 const formatHost: ts.FormatDiagnosticsHost = {
   getCurrentDirectory: () => process.cwd(),
   getCanonicalFileName: (fileName) => fileName,
@@ -76,6 +77,7 @@ const { command, builderMode, nodeEnv } = parseArgs();
 const tasks = new Set<RunningChild>();
 let watcher: Watcher | null = null;
 let shuttingDown = false;
+let blockedByMissingModules = false;
 
 function childEnv(): NodeJS.ProcessEnv {
   return { ...process.env, BUILDER_MODE: builderMode, NODE_ENV: nodeEnv };
@@ -85,6 +87,10 @@ function writeLog(source: ProcName, data: Buffer | string) {
   for (const line of data.toString().replace(/\r/g, "").split("\n")) {
     if (line.length > 0) process.stderr.write(`[${source}] ${line}\n`);
   }
+}
+
+function isModuleNotFoundDiagnostic(diag: ts.Diagnostic): boolean {
+  return diag.code === TS_CANNOT_FIND_MODULE;
 }
 
 function writeTscDiagnostic(input: ts.Diagnostic | string) {
@@ -132,13 +138,29 @@ function runTsc(options: RunTscOptions): number | undefined {
   }
 
   const onProgram = (program: ts.Program) => {
-    const errors = ts
+    const moduleErrors = ts
       .getPreEmitDiagnostics(program)
-      .filter((d) => d.category === ts.DiagnosticCategory.Error);
+      .filter(
+        (d) =>
+          d.category === ts.DiagnosticCategory.Error && isModuleNotFoundDiagnostic(d),
+      );
 
-    for (const diag of errors) writeTscDiagnostic(diag);
+    const wasBlocked = blockedByMissingModules;
+    blockedByMissingModules = moduleErrors.length > 0;
 
-    return errors.length > 0 && failOnError ? 1 : 0;
+    for (const diag of moduleErrors) writeTscDiagnostic(diag);
+
+    if (blockedByMissingModules && !wasBlocked) {
+      process.stderr.write(
+        "[tsc] Не найдены модули — приложение приостановлено. Установите зависимости или исправьте импорты.\n",
+      );
+      void stopNodeProcess();
+    } else if (!blockedByMissingModules && wasBlocked) {
+      process.stderr.write("[tsc] Модули найдены — приложение снова запустится после сборки.\n");
+      if (!failOnError && existsSync(ENTRY)) queueNodeRestart();
+    }
+
+    return moduleErrors.length > 0 && failOnError ? 1 : 0;
   };
 
   if (failOnError) {
@@ -227,7 +249,7 @@ async function stopNodeProcess() {
 }
 
 async function restartNode() {
-  if (shuttingDown) return;
+  if (shuttingDown || blockedByMissingModules) return;
 
   await stopNodeProcess();
   if (shuttingDown) return;

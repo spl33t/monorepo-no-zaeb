@@ -17,7 +17,7 @@ description: >-
 
 ## Как действовать (главное)
 
-1. **Тип и параметры уже ясны** (например Nest + имя `api`, или пакет `hooks`) — запускай **one-liner** в терминале. Флаги и синтаксис бери из `pnpm create:app -- --help`, `pnpm create:package -- --help`; при необходимости — `tools/README.md` и `tools/create-app.js` / `tools/create-package.js`.
+1. **Тип и параметры уже ясны** (например Nest + имя `api`, или пакет `hooks`) — запускай **one-liner** в терминале. Флаги и синтаксис бери из `pnpm create:app -- --help`, `pnpm create:package -- --help`; при необходимости — `tools/README.md` и `tools/cli/create-app.js` / `tools/cli/create-package.js`.
 
 2. **Что создавать не определено** (тип приложения, порт, имя, вариант Vite/Node) — **не угадывай** за пользователя в readline. Предложи ему **самому** запустить `pnpm create:app` или `pnpm create:package` без флагов (интерактивный мастер), затем продолжить задачу.
 
@@ -41,7 +41,7 @@ description: >-
 | Docker Compose | `pnpm create:docker-compose`, базовые `pnpm docker:*` — `package.json` |
 | MCP PostgreSQL | `pnpm mcp:add-postgres` (секреты не коммитить) |
 
-Шаблоны и структура: `tools/README.md`. Сомнения по опциям one-liner — сначала `pnpm create:app -- --help` / `pnpm create:package -- --help`, затем при необходимости исходники `tools/create-*.js`.
+Шаблоны и структура: `tools/README.md`. Сомнения по опциям one-liner — сначала `pnpm create:app -- --help` / `pnpm create:package -- --help`, затем при необходимости исходники `tools/cli/create-*.js`.
 
 ## Чего не делать
 

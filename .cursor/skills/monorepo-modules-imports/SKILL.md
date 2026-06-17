@@ -57,4 +57,4 @@ import { Button } from '@monorepo/button';
 
 - Корневой glob: `tsconfig.json` → `@monorepo/*` → `packages/*/src`.
 - Vite: `tools/generators/vite-config.js` — alias на **`packages`**, не на каждый пакет.
-- Node/Nest: `tools/generators/node.js`, `tools/generators/tsdown-config.js`.
+- Node/Nest: `tools/generators/node.js`, `tools/generators/tsdown-config.js`; плагин — `tools/plugins/runtime-packages-plugin.mjs`.

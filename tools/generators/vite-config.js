@@ -1,4 +1,4 @@
-const { generateGetPortFromEnvFunction } = require('./env-utils');
+const { generateGetPortFromEnvFunction } = require('../lib/env-utils');
 
 /**
  * Генерирует vite.config.ts для Vite приложений
