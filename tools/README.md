@@ -33,7 +33,6 @@ apps/your-app/
 ├── package.json
 ├── tsconfig.json
 ├── tsdown.config.ts
-├── run.ts
 └── .env.example
 ```
 

@@ -18,7 +18,7 @@ function generateNestJsFiles(appDir, name) {
 
   const devDependencies = {
     '@nestjs/cli': '^10.0.0',
-    '@nestjs/schematics': '^10.0.0'
+    '@nestjs/schematics': '^10.0.0',
   };
 
   // src/main.ts

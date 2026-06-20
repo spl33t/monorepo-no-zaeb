@@ -1,0 +1,15 @@
+{
+  "name": "@monorepo/node-run",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "node-run": "./src/node-run.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
+}

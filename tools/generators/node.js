@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { generateTsdownConfig } = require('./tsdown-config');
-const { generateRunScript } = require('./run');
+const { resolveMonorepoDistPaths } = require('../lib/monorepo-dist.ts');
 const { generateNodeDockerfile } = require('./node-dockerfile-generator');
 const { generateNestJsFiles } = require('./node-variants/nestjs');
 const { generateExpressFiles } = require('./node-variants/express');
@@ -23,36 +23,38 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   }
 
   // package.json (общий для всех Node.js приложений)
+  const distPaths = resolveMonorepoDistPaths(variantFiles.entryPath, appDir);
   const packageJson = {
     name,
     version: '1.0.0',
     type: 'module',
-    main: './dist/index.cjs',
+    main: distPaths.main,
     scripts: {
-      dev: 'node --experimental-strip-types run.ts dev',
-      build: 'node --experimental-strip-types run.ts build',
-      start: 'node --experimental-strip-types run.ts start'
+      dev: 'node-run dev',
+      build: 'node-run build',
+      start: 'node-run start'
     },
     dependencies: variantFiles.dependencies,
-    devDependencies: variantFiles.devDependencies
+    devDependencies: variantFiles.devDependencies,
   };
   fs.writeFileSync(
     path.join(appDir, 'package.json'),
     JSON.stringify(packageJson, null, 2)
   );
 
-  // tsconfig.json (общий для всех Node.js/tsdown приложений)
+  // tsconfig.json — только src/; @monorepo/* через paths (без include packages — иначе rootDir ломается)
   const tsconfig = {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      outDir: './dist',
-      baseUrl: '.',
+      module: 'ESNext',
+      moduleResolution: 'bundler',
+      noEmit: true,
       paths: {
-        '@/*': ['src/*'],
+        '@/*': ['./src/*'],
         '@monorepo/*': ['../../packages/*/src']
       }
     },
-    include: ['src/**/*', '../../packages/*/src/**/*']
+    include: ['src/**/*']
   };
   fs.writeFileSync(
     path.join(appDir, 'tsconfig.json'),
@@ -60,11 +62,8 @@ function createNodeApp(appDir, name, variant, port = '3000') {
   );
 
   // tsdown.config.ts (общий, но с разными entry путями)
-  const tsdownConfig = generateTsdownConfig(variantFiles.entryPath);
+  const tsdownConfig = generateTsdownConfig(variantFiles.entryPath, appDir);
   fs.writeFileSync(path.join(appDir, 'tsdown.config.ts'), tsdownConfig);
-
-  // run.ts — dev/build/start оркестратор (tsdown + tsc + node, restart по .ready / .env)
-  fs.writeFileSync(path.join(appDir, 'run.ts'), generateRunScript());
 
   // .env.example (общий)
   const envExample = `# Environment variables
@@ -105,7 +104,6 @@ README.md
       'package.json',
       'tsconfig.json',
       'tsdown.config.ts',
-      'run.ts',
       '.env',
       '.env.example',
       'Dockerfile',

@@ -1,78 +1,33 @@
-const { generateGetPortFromEnvFunction } = require('../lib/env-utils');
+const { resolveMonorepoDistPaths } = require('../lib/monorepo-dist.ts')
 
 /**
  * Генерирует tsdown.config.ts для Node.js приложений
  * @param {string} entryPath - Путь к entry (например, 'src/main.ts' или 'src/index.ts')
+ * @param {string} appDir - Абсолютный путь к директории приложения
  * @returns {string}
  */
-function generateTsdownConfig(entryPath) {
-  const getPortFromEnvCode = generateGetPortFromEnvFunction({
-    useProcessCwd: true,
-    throwError: true,
-  });
-
+function generateTsdownConfig(entryPath, appDir) {
   return `import { defineConfig } from 'tsdown'
+import ttsc from '@ttsc/unplugin/rolldown'
+import { config as loadEnv } from 'dotenv'
 import path from 'path'
-import { mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { runtimePackagesPlugin } from '../../tools/plugins/runtime-packages-plugin.mjs'
+import { resolveBuilderMode } from '../../tools/lib/builder-mode.ts'
+import { getPortFromEnv } from '../../tools/lib/env-utils.ts'
+import { resolveMonorepoDistPaths } from '../../tools/lib/monorepo-dist.ts'
+import { devReadyPlugin } from '../../tools/plugins/dev-ready-plugin.ts'
+import { runtimePackagesPlugin } from '../../tools/plugins/runtime-packages-plugin.ts'
 
-/** Режим сборщика tsdown. Не путать с NODE_ENV рантайма. */
-export type BuilderMode = 'dev' | 'prod'
+loadEnv({ path: path.resolve(process.cwd(), '.env'), override: true })
 
-const BUILDER_MODE_VALUES: BuilderMode[] = ['dev', 'prod']
-
-export const builderModeConfig: Record<
-  BuilderMode,
-  { watch: boolean; clean: boolean; treeshake: boolean }
-> = {
+const baseCfg = resolveBuilderMode({
   dev: { watch: true, clean: false, treeshake: false },
   prod: { watch: false, clean: true, treeshake: true },
-}
+})
 
-const args = process.argv.slice(2)
-const BUILDER_MODE_FLAG = '--builder-mode='
-
-function parseBuilderModeFlag(value: string): BuilderMode {
-  if (BUILDER_MODE_VALUES.includes(value as BuilderMode)) {
-    return value as BuilderMode
-  }
-  throw new Error(\`tsdown: invalid --builder-mode=\${value}, use dev or prod\`)
-}
-
-export function resolveBuilderMode(argv = args): BuilderMode {
-  const hasDev = argv.includes('--dev')
-  const hasProd = argv.includes('--prod')
-
-  if (hasDev && hasProd) {
-    throw new Error('tsdown: use either --dev or --prod, not both')
-  }
-  if (hasDev) return 'dev'
-  if (hasProd) return 'prod'
-
-  const flag = argv.find((arg) => arg.startsWith(BUILDER_MODE_FLAG))
-  if (flag) return parseBuilderModeFlag(flag.slice(BUILDER_MODE_FLAG.length))
-
-  const fromEnv = process.env.BUILDER_MODE ?? process.env.builderMode
-  if (fromEnv) return parseBuilderModeFlag(fromEnv)
-
-  throw new Error(
-    'tsdown: set builder mode via --dev, --prod, --builder-mode=dev|prod, or BUILDER_MODE=dev|prod',
-  )
-}
-
-/** PORT из .env — проверяем до сборки (см. hooks). */
-${getPortFromEnvCode}
-
-/** Метка готовности dev-сборки — run.ts перезапускает node при изменении mtime в build:done. */
-const READY_FILE = path.join(process.cwd(), 'dist', '.ready')
-
-const builderMode = resolveBuilderMode()
-const mode = builderModeConfig[builderMode]
+const distPaths = resolveMonorepoDistPaths('${entryPath}')
 
 export default defineConfig({
-  entry: {
-    index: '${entryPath}',
-  },
+  entry: distPaths.entry,
 
   platform: 'node',
   format: ['cjs'],
@@ -80,29 +35,28 @@ export default defineConfig({
 
   dts: false,
 
-  clean: mode.clean,
+  clean: baseCfg.clean,
   shims: false,
-  treeshake: mode.treeshake,
+  treeshake: baseCfg.treeshake,
   sourcemap: true,
-  watch: mode.watch,
+  watch: baseCfg.watch,
 
   skipNodeModulesBundle: true,
   unbundle: true,
 
-  env: {
-    BUILDER_MODE: builderMode,
+  outputOptions: {
+    preserveModulesRoot: distPaths.monorepoRoot,
   },
 
-  plugins: [runtimePackagesPlugin()],
+  env: {
+    BUILDER_MODE: baseCfg.mode,
+  },
+
+  plugins: [ttsc(), runtimePackagesPlugin(), devReadyPlugin({ mode: baseCfg.mode })],
 
   hooks: {
     'build:prepare': async () => {
       getPortFromEnv()
-    },
-    'build:done': async () => {
-      if (builderMode !== 'dev') return
-      mkdirSync(path.dirname(READY_FILE), { recursive: true })
-      writeFileSync(READY_FILE, Date.now().toString())
     },
   },
 })

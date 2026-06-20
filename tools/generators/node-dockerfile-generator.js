@@ -1,7 +1,7 @@
 /**
  * Генерирует Dockerfile для Node.js приложений
  * @param {string} appName - Название приложения (используется в путях)
- * @returns {string} Содержимое Dockerfile
+ * @returns {string}
  */
 function generateNodeDockerfile(appName) {
   return `# Build stage
@@ -14,6 +14,7 @@ RUN corepack enable
 
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml ./
 COPY tsconfig.json ./
 
@@ -25,7 +26,7 @@ COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Build application
 WORKDIR /app/apps/${appName}
@@ -41,28 +42,26 @@ RUN corepack enable
 
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml ./
 COPY tsconfig.json ./
 
-# Copy tools directory (needed for preinstall script)
+# Copy tools directory (needed for preinstall script + @monorepo/node-run)
 COPY tools ./tools/
 
 # Copy workspace configuration
 COPY apps/${appName}/package.json ./apps/${appName}/
 COPY packages ./packages/
 
-# Install only production dependencies
-RUN pnpm install --prod
+# Production deps + node-run (root devDependency, нужен для pnpm run start)
+RUN pnpm install --prod --frozen-lockfile \\
+  && pnpm install --frozen-lockfile -w @monorepo/node-run
 
-# Copy built application and run orchestrator from builder
+# Copy built application from builder (dist/apps/*, dist/packages/*, symlinks)
 COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
-COPY --from=builder /app/apps/${appName}/run.ts ./apps/${appName}/run.ts
-COPY --from=builder /app/apps/${appName}/tsconfig.json ./apps/${appName}/tsconfig.json
-COPY --from=builder /app/node_modules/typescript ./node_modules/typescript
 
 WORKDIR /app/apps/${appName}
 
-# Start application
 CMD ["pnpm", "run", "start"]
 
 # Development stage
@@ -75,6 +74,7 @@ RUN corepack enable
 
 # Copy root package files
 COPY package*.json ./
+COPY pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml ./
 COPY tsconfig.json ./
 
@@ -86,11 +86,10 @@ COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
 
 # Install all dependencies (including dev)
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 WORKDIR /app/apps/${appName}
 
-# Start in dev mode (run.ts: tsdown watch + tsc + node, restart on .ready / .env)
 CMD ["pnpm", "run", "dev"]
 `;
 }

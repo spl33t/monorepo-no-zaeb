@@ -1,8 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** @param {{ distDir?: string, packagesDir?: string }} [options] */
-export function runtimePackagesPlugin(options = {}) {
+export interface RuntimePackagesPluginOptions {
+  distDir?: string
+  packagesDir?: string
+}
+
+export function runtimePackagesPlugin(
+  options: RuntimePackagesPluginOptions = {},
+) {
   const distDir = path.resolve(options.distDir ?? 'dist')
   const packagesDir = path.resolve(
     options.packagesDir ?? path.join(process.cwd(), '../../packages'),
@@ -35,7 +41,10 @@ export function runtimePackagesPlugin(options = {}) {
   }
 }
 
-async function ensureNodeModulesLink(sourcePackagePath, distPackagePath) {
+async function ensureNodeModulesLink(
+  sourcePackagePath: string,
+  distPackagePath: string,
+): Promise<void> {
   const sourceNodeModules = path.join(sourcePackagePath, 'node_modules')
 
   if (!fs.existsSync(sourceNodeModules)) {
