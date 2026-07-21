@@ -32,7 +32,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
 
-  const port = process.env.PORT!; // Валидация выполняется в tsdown.config.ts
+  const port = process.env.PORT!; // Валидация выполняется в node-run dev
   const host = '0.0.0.0';
 
   await app.listen(port, host);
@@ -86,7 +86,7 @@ export class AppController {
 @Injectable()
 export class AppService {
   getHello(): string {
-    return '🚀 ${name} API is running!';
+    return \`🚀 ${name} API is running!\`;
   }
 }
 `;

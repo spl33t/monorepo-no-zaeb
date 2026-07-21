@@ -1,11 +1,11 @@
-//import dayjs from 'dayjs';
+import dayjs from 'dayjs';
 //import fakeDependency from 'fake-dependency';
 
 // core package
-export const placeholder = "placeholder"
+export const placeholder = "placeholder23"
 
 export function timestamp() {
-  //return dayjs().format('YYYY-MM-DD HH:mm:ss');
+  return dayjs().format('YYYY-MM-DD HH:mm:ss');
 }
 //export default hello
 
@@ -14,15 +14,9 @@ export function timestamp() {
 }
  */
 
-console.log('core package 123');
-//const a:string = 1;
+console.log('core package 1232213');
 
 
 
-
-
-
-
-
-
-
+/* 
+const a: number = ""; */

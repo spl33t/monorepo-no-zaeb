@@ -14,13 +14,14 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "exactOptionalPropertyTypes": true,
-    "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "@monorepo/*": ["./packages/*/src"]
+      "@monorepo/*": [
+        "./packages/*/src"
+      ]
     }
   },
   "include": [

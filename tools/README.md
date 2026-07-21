@@ -32,7 +32,6 @@ apps/your-app/
 │   └── index.ts (или main.ts для NestJS)
 ├── package.json
 ├── tsconfig.json
-├── tsdown.config.ts
 └── .env.example
 ```
 
@@ -117,6 +116,10 @@ pnpm create:package
 # Можно импортировать: import { ... } from '@monorepo/validation'
 ```
 
+## node-run (Node/Nest)
+
+`pnpm` scripts `dev` / `build` / `start` в Node-приложениях вызывают `@monorepo/node-run`. Архитектура резолва (`@monorepo/*` + изоляция npm-deps пакетов): [`node-run/ARCHITECTURE.md`](node-run/ARCHITECTURE.md).
+
 ## Разработка инструментов
 
 Структура `tools/`:
@@ -125,8 +128,9 @@ pnpm create:package
 |-------|------------|
 | `cli/` | Точки входа CLI (`create:app`, `kill:port`, docker и т.д.) |
 | `generators/` | Генераторы файлов для скаффолда приложений |
-| `plugins/` | Плагины сборки (tsdown), используемые в `apps/*` |
-| `lib/` | Общие утилиты для CLI и генераторов |
+| `node-run/` | Runtime Node/Nest (ttsc + tsx + resolve hook) |
+| `plugins/` | Зарезервировано (ранее — плагины tsdown) |
+| `lib/` | Общие утилиты для CLI и генераторы |
 | `templates/` | Статические шаблоны (MCP и др.) |
 
 Скрипты в корневом `package.json` указывают на `tools/cli/*`. Генераторы не требуют дополнительных зависимостей.

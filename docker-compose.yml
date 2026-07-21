@@ -1,0 +1,20 @@
+services:
+  nestjs:
+    build:
+      context: .
+      dockerfile: apps/nestjs/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    container_name: nestjs
+    ports:
+      - 3000:3000
+    env_file:
+      - apps/nestjs/.env
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/nestjs
+          target: /app/apps/nestjs
+        - action: sync
+          path: ./packages
+          target: /app/packages

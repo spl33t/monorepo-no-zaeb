@@ -59,3 +59,7 @@ coverage/
 *.js.map
 *.d.ts.map
 
+
+# node-run generated effective tsconfig
+tsconfig.node-run.json
+**/tsconfig.node-run.json

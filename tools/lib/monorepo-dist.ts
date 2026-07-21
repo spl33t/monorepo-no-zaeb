@@ -12,6 +12,7 @@ export interface MonorepoDistPaths {
 export function resolveMonorepoDistPaths(
   entryPath: string,
   cwd = process.cwd(),
+  emitExt: 'js' | 'cjs' = 'js',
 ): MonorepoDistPaths {
   const monorepoRoot = path.resolve(cwd, '../..')
   const appDir = path.relative(monorepoRoot, cwd).replace(/\\/g, '/')
@@ -22,7 +23,7 @@ export function resolveMonorepoDistPaths(
     monorepoRoot,
     appDir,
     entryKey,
-    main: `./dist/${entryKey}.cjs`,
+    main: `./dist/${entryKey}.${emitExt}`,
     entry: { [entryKey]: entryPath },
   }
 }

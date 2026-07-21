@@ -4,12 +4,21 @@
   "private": true,
   "type": "module",
   "bin": {
-    "node-run": "./src/node-run.ts"
+    "node-run": "./bin/node-run.js"
   },
   "files": [
+    "bin",
     "src"
   ],
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1"
+  },
+  "dependencies": {
+    "get-tsconfig": "^4.14.0",
+    "tsx": "^4.20.3",
+    "ttsc": "^0.16.2"
   }
 }
