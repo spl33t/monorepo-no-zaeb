@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: 'Frontend application name from apps/ directory (e.g., frontend)'
+        description: 'Frontend app name under vite-apps/apps/<name>'
         required: true
         type: string
       bucket_name:
@@ -18,9 +18,9 @@ on:
         default: true
         type: boolean
       build_command:
-        description: 'Build command (default: pnpm --filter <app> build, use {app} placeholder)'
+        description: 'Build command (default: npm run build -w <app> in vite-apps, use {app} placeholder)'
         required: false
-        default: 'pnpm --filter {app} build'
+        default: 'npm run build -w @apps/{app}'
         type: string
       build_output:
         description: 'Build output directory (default: dist)'
@@ -36,35 +36,33 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate application exists
+        id: app_path
         run: |
-          if [ ! -d "apps/${{ github.event.inputs.app_name }}" ]; then
-            echo "❌ Error: Application 'apps/${{ github.event.inputs.app_name }}' not found!"
-            echo ""
-            echo "Available applications:"
-            ls -1 apps/ 2>/dev/null || echo "No apps directory found"
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          APP_DIR="vite-apps/apps/$APP_NAME"
+          if [ ! -d "$APP_DIR" ]; then
+            echo "❌ Application '$APP_DIR' not found!"
+            echo "Available:"
+            ls -1 vite-apps/apps 2>/dev/null || echo "(empty)"
             exit 1
           fi
-          
-          echo "✅ Application found: ${{ github.event.inputs.app_name }}"
+          echo "dir=$APP_DIR" >> "$GITHUB_OUTPUT"
+          echo "✅ Application found: $APP_DIR"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.28.1
+          cache: 'npm'
+          cache-dependency-path: vite-apps/package-lock.json
 
       - name: Install dependencies
-        run: |
-          # Устанавливаем зависимости из корня проекта (для monorepo)
-          pnpm install --frozen-lockfile
+        working-directory: vite-apps
+        run: npm ci
 
       - name: Build frontend
+        working-directory: vite-apps
         run: |
-          # Используем команду из input или дефолтную, заменяем {app} на имя приложения
           APP_NAME="${{ github.event.inputs.app_name }}"
           BUILD_CMD="${{ github.event.inputs.build_command }}"
           BUILD_CMD=$(echo "$BUILD_CMD" | sed "s/{app}/$APP_NAME/g")
@@ -76,7 +74,7 @@ jobs:
       - name: Validate build output
         run: |
           BUILD_OUTPUT="${{ github.event.inputs.build_output }}"
-          APP_DIR="apps/${{ github.event.inputs.app_name }}"
+          APP_DIR="${{ steps.app_path.outputs.dir }}"
           
           if [ ! -d "$APP_DIR/$BUILD_OUTPUT" ]; then
             echo "❌ Error: Build output directory '$BUILD_OUTPUT' not found in '$APP_DIR'"
@@ -118,7 +116,7 @@ jobs:
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
-          root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
+          root: ${{ steps.app_path.outputs.dir }}/${{ github.event.inputs.build_output }}
           prefix: versions/${{ steps.bucket.outputs.version }}/
           include: |
             **/*
@@ -129,7 +127,7 @@ jobs:
         with:
           yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
           bucket: ${{ steps.bucket.outputs.name }}
-          root: apps/${{ github.event.inputs.app_name }}/${{ github.event.inputs.build_output }}
+          root: ${{ steps.app_path.outputs.dir }}/${{ github.event.inputs.build_output }}
           # Без prefix - загружаем в корень bucket для хостинга
           # Yandex Object Storage требует, чтобы главная страница была без / в пути
           include: |

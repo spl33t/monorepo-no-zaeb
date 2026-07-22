@@ -1,0 +1,15 @@
+{
+  "name": "@monorepo/nest-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thin bin shim for @nestjs/cli — apps get nest in .bin without linking the toolchain root",
+  "bin": {
+    "nest": "./bin/nest.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@nestjs/cli": "^10.0.0"
+  }
+}

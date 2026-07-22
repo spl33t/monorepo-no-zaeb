@@ -1,25 +1,13 @@
 {
   "name": "monorepo-no-zaeb",
   "private": true,
-  "packageManager": "pnpm@10.28.1",
-  "engines": {
-    "npm": "please-use-pnpm",
-    "yarn": "please-use-pnpm"
-  },
   "scripts": {
-    "deps:install": "pnpm install",
-    "deps:reinstall": "node tools/cli/reinstall-deps.js",
-    "preinstall": "node tools/cli/check-pnpm.js",
-    "--------------------------------Create commands--------------------------------": "",
-    "create:app": "node tools/cli/create-app.js",
-    "create:package": "node tools/cli/create-package.js",
-    "create:docker-compose": "node tools/cli/create-docker-compose.js",
-    "mcp:add-postgres": "node tools/cli/add-mcp-postgres.js",
-    "--------------------------------Utils-------------------------------------------": "",
+    "--------------------------------Global utils------------------------------------": "",
+    "deps:install": "node tools/cli/install-deps.js",
     "kill:port": "node tools/cli/kill-port.js",
-    "recreate:dockerfile": "node tools/cli/recreate-dockerfile.js",
     "--------------------------------Docker-----------------------------------------": "",
-    "docker:manager": "node tools/cli/docker-compose-manager.js",
+    "docker:create-compose": "node tools/cli/create-docker-compose.js",
+    "docker:compose-manager": "node tools/cli/docker-compose-manager.js",
     "docker:up-all": "cross-env DOCKER_TARGET=production docker compose up --build",
     "docker:up-all:watch": "docker compose up --watch --build",
     "docker:down-all": "docker compose down",
@@ -27,17 +15,8 @@
     "docker:ps": "docker compose ps"
   },
   "devDependencies": {
-    "@monorepo/node-run": "workspace:*",
-    "@ttsc/paths": "^0.16.2",
     "@types/node": "^20.0.0",
     "cross-env": "^7.0.3",
-    "rimraf": "^5.0.0",
-    "ttsc": "^0.16.2",
-    "typescript": "7.0.1-rc",
-    "vite": "^7.3.1",
     "yaml": "^2.8.2"
-  },
-  "dependencies": {
-    "dotenv": "^16.3.1"
   }
 }

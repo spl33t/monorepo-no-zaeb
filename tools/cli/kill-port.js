@@ -15,16 +15,16 @@ function question(query) {
 }
 
 function printHelp() {
-  console.log(`Использование: pnpm kill:port [порт...]
+  console.log(`Использование: npm run kill:port -- [порт...]
 
 Завершает процессы, слушающие указанные TCP-порты (Windows, Linux, macOS).
 
-Без аргументов — интерактивный режим (порты из apps/*/.env).
+Без аргументов — интерактивный режим (порты из nestjs-apps/apps и vite-apps/apps).
 
 Примеры:
-  pnpm kill:port
-  pnpm kill:port 3000
-  pnpm kill:port 3000 5173
+  npm run kill:port
+  npm run kill:port -- 3000
+  npm run kill:port -- 3000 5173
 `);
 }
 
@@ -45,24 +45,22 @@ function parsePorts(argv) {
   return [...new Set(ports)];
 }
 
-function discoverAppPorts(root = process.cwd()) {
-  const appsDir = path.join(root, 'apps');
-  if (!fs.existsSync(appsDir)) return [];
-
+function discoverAppPorts(root) {
+  const layout = require('../lib/monorepo-layout');
+  const repoRoot = root || layout.findMonorepoRoot();
   const result = [];
-  for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
 
+  for (const app of layout.listApps(repoRoot)) {
     const envCandidates = [
-      path.join(appsDir, entry.name, '.env'),
-      path.join(appsDir, entry.name, '.env.example'),
+      path.join(app.absDir, '.env'),
+      path.join(app.absDir, '.env.example'),
     ];
 
     for (const envPath of envCandidates) {
       if (!fs.existsSync(envPath)) continue;
       const match = fs.readFileSync(envPath, 'utf8').match(/^PORT=(\d+)/m);
       if (match) {
-        result.push({ app: entry.name, port: Number(match[1]) });
+        result.push({ app: `${app.relPosix}`, port: Number(match[1]) });
         break;
       }
     }

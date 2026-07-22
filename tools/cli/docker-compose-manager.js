@@ -246,7 +246,7 @@ async function manageDockerCompose() {
   
   if (!fs.existsSync(composePath)) {
     console.error(`❌ Файл docker-compose.yml не найден в ${process.cwd()}`);
-    console.log('💡 Создайте docker-compose.yml или запустите: pnpm create:docker-compose');
+    console.log('💡 Создайте docker-compose.yml или запустите: npm run docker:create-compose');
     rl.close();
     process.exit(1);
   }

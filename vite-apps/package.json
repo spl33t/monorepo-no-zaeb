@@ -1,0 +1,26 @@
+{
+  "name": "@monorepo/vite-apps",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Vite toolchain — React/Vite deps; apps stay thin",
+  "workspaces": [
+    "apps/*",
+    "tools/vite-cli"
+  ],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "create:app": "node tools/cli/create-app.js"
+  },
+  "dependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "typescript": "~5.7.2",
+    "vite": "^7.3.1"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@apps/nestjs-2",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "./dist/apps/nestjs-2/src/main.js",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/apps/nestjs-2/src/main.js"
+  },
+  "devDependencies": {
+    "@monorepo/nest-cli": "*"
+  }
+}

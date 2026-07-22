@@ -1,52 +1,23 @@
-# 🚀 Monorepo БЕЗ ЗАЕБОВ
+# Monorepo
 
-TypeScript монорепозиторий. Всё работает автоматически.
-
-## Быстрый старт
+Саб-монорепы `nestjs-apps` и `vite-apps` (у каждого свой npm workspaces). Корневой `tools/` — утилиты.
 
 ```bash
-# Установка
-pnpm install
+# обычно — в том мире, где работаешь
+cd nestjs-apps && npm install
+cd vite-apps && npm install
+npm install                 # root tools
 
-# Создать пакет
-pnpm create:package
+# после clone всего репо — ярлык на три независимых install
+npm run deps:install
 
-# Создать приложение
-pnpm create:app
+cd nestjs-apps && npm run create:app
+cd vite-apps && npm run create:app
 ```
 
-## Использование
-
-### Команды
+Общий код — папки в `*/packages/` (руками). Импорт: `@monorepo/<name>`.
 
 ```bash
-# Разработка с автоперезапуском
-pnpm --filter <app> dev
-
-# Сборка
-pnpm --filter <app> build
-
-# Запуск собранного
-pnpm --filter <app> start
+cd nestjs-apps && npm run dev -w @apps/<app>
+cd vite-apps && npm run build -w @apps/<app>
 ```
-
-### Импорт пакетов
-
-```typescript
-// Просто импортируй - работает сразу
-import { something } from '@monorepo/your-package';
-```
-
-### Watch mode
-
-Автоматически перезапускается при изменении:
-- Кода приложения
-- **Кода в packages** ✨
-
-## Типы приложений
-
-1. **Node.js TypeScript** - простое Node.js приложение
-2. **NestJS API** - NestJS сервер
-3. **Vite** - React или Vanilla HTML + TypeScript
-
-Всё настроено автоматически. Просто создавай и работай. 🚀

@@ -1,0 +1,15 @@
+{
+  "name": "@monorepo/vite-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Thin bin shim for vite — apps get vite in .bin without linking the toolchain root",
+  "bin": {
+    "vite": "./bin/vite.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "vite": "^7.3.1"
+  }
+}

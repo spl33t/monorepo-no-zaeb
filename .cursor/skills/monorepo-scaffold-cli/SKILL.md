@@ -1,49 +1,41 @@
 ---
 name: monorepo-scaffold-cli
 description: >-
-  Scaffold apps, packages, docker-compose, or MCP Postgres in this monorepo via
-  pnpm scripts under tools/. When the desired app type and options are known,
-  prefer non-interactive one-liners; otherwise tell the user to run the same
-  pnpm script interactively in their terminal. Do not duplicate CLI help in
-  chat—the scripts and tools/README.md are the source of truth; use --help when
-  needed.
+  Scaffold apps via thin toolchain create:app + shared tools/lib/create-app-shell
+  (generators stay per-toolchain). Global utils (docker-compose, kill-port) via
+  root tools/. Do not scaffold packages/ — free-form folders. Prefer
+  non-interactive one-liners when options are known; otherwise tell the user to
+  run the interactive script. Do not dump CLI help—use --help / tools/README.md.
 ---
 
 # Скаффолдинг через CLI
 
 ## Когда применять
 
-Новый `apps/*`, `packages/*`, правки `docker-compose`, подключение MCP Postgres, или соблазн **вручную** скопировать дерево приложения — сначала опирайся на CLI в `package.json` / `tools/`.
+Новый app в `nestjs-apps/apps` или `vite-apps/apps`, правки `docker-compose`.  
+**Не** генерировать `packages/` — это обычные папки с общим кодом.
 
-## Как действовать (главное)
+## Как действовать
 
-1. **Тип и параметры уже ясны** (например Nest + имя `api`, или пакет `hooks`) — запускай **one-liner** в терминале. Флаги и синтаксис бери из `pnpm create:app -- --help`, `pnpm create:package -- --help`; при необходимости — `tools/README.md` и `tools/cli/create-app.js` / `tools/cli/create-package.js`.
-
-2. **Что создавать не определено** (тип приложения, порт, имя, вариант Vite/Node) — **не угадывай** за пользователя в readline. Предложи ему **самому** запустить `pnpm create:app` или `pnpm create:package` без флагов (интерактивный мастер), затем продолжить задачу.
-
-3. В ответах пользователю **не выкладывай целиком справку CLI** — достаточно команды и ссылки на `--help` или `tools/README.md`, если нужны детали.
-
-Уточнение для `pnpm`: аргументы скрипта отделяй от аргументов pnpm через **`--`** (как в `pnpm create:app -- --kind …`).
+1. Параметры ясны — one-liner с `--`.
+2. Неясно — интерактивный скрипт у пользователя.
+3. Общий код мира — предложи создать папку в `*/packages/` вручную.
 
 ## Жёсткие правила
 
-- Только **`pnpm`** (`engines` в корне).
-- Не выдумывай структуру приложений/пакетов обходом генераторов — имена и шаблоны должны совпадать с `tools/generators/*`.
-- Импорты workspace: навык **`monorepo-modules-imports`** (`@monorepo/…`, без лишних правок `paths` после CLI).
-- После скаффолда при пропущенной установке: см. вывод CLI (`pnpm install` / `--filter`).
+- Только **`npm`** (workspaces внутри тулчейна, не на root).
+- Nest app: свой `nest-cli.json`, `webpack: false`, CLI через `@monorepo/nest-cli`.
+- Vite app: CLI через `@monorepo/vite-cli` (не линковать `@monorepo/vite-apps`).
+- Общий flow create-app — `tools/lib/create-app-shell.js`; generators — только в тулчейне.
+- Не восстанавливать `create:package` / обязательный `src/` в packages.
+- Не включать webpack только ради folder-packages.
+- Не восстанавливать root `pnpm-workspace` / `check-pnpm`.
 
-## Команды-ориентиры (без перечня флагов)
+## Команды
 
-| Сценарий        | Входная точка |
-|----------------|----------------|
-| Приложение     | `pnpm create:app` |
-| Пакет          | `pnpm create:package` |
-| Docker Compose | `pnpm create:docker-compose`, базовые `pnpm docker:*` — `package.json` |
-| MCP PostgreSQL | `pnpm mcp:add-postgres` (секреты не коммитить) |
-
-Шаблоны и структура: `tools/README.md`. Сомнения по опциям one-liner — сначала `pnpm create:app -- --help` / `pnpm create:package -- --help`, затем при необходимости исходники `tools/cli/create-*.js`.
-
-## Чего не делать
-
-- Не оформлять «как в шаблоне» новое приложение без `create:app`, если нужен стек репозитория.
-- Не использовать `npm` / `yarn` для скаффолда в этом репо.
+| Сценарий | Входная точка |
+|----------|----------------|
+| Nest app | `cd nestjs-apps && npm run create:app` |
+| Vite app | `cd vite-apps && npm run create:app` |
+| Docker | `npm run docker:create-compose`, `npm run docker:*` |
+| Deps | `npm install` в тулчейне; после clone — `npm run deps:install` (три независимых install) |

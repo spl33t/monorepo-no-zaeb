@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: 'Application name from apps/ directory (e.g., backend)'
+        description: 'Application name (nestjs-apps/apps/<name> or vite-apps/apps/<name>)'
         required: true
         type: string
       push_latest:
@@ -21,21 +21,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate application exists
+        id: app_path
         run: |
-          if [ ! -d "apps/${{ github.event.inputs.app_name }}" ]; then
-            echo "❌ Error: Application 'apps/${{ github.event.inputs.app_name }}' not found!"
-            echo ""
-            echo "Available applications:"
-            ls -1 apps/ 2>/dev/null || echo "No apps directory found"
+          APP_NAME="${{ github.event.inputs.app_name }}"
+          APP_DIR=""
+          for candidate in "nestjs-apps/apps/$APP_NAME" "vite-apps/apps/$APP_NAME"; do
+            if [ -d "$candidate" ] && [ -f "$candidate/Dockerfile" ]; then
+              APP_DIR="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$APP_DIR" ]; then
+            echo "❌ Application '$APP_NAME' not found under nestjs-apps/apps or vite-apps/apps (with Dockerfile)"
+            echo "Available:"
+            ls -1 nestjs-apps/apps 2>/dev/null || true
+            ls -1 vite-apps/apps 2>/dev/null || true
             exit 1
           fi
-          
-          if [ ! -f "apps/${{ github.event.inputs.app_name }}/Dockerfile" ]; then
-            echo "❌ Error: Dockerfile not found in 'apps/${{ github.event.inputs.app_name }}'"
-            exit 1
-          fi
-          
-          echo "✅ Application found: ${{ github.event.inputs.app_name }}"
+
+          echo "dir=$APP_DIR" >> "$GITHUB_OUTPUT"
+          echo "✅ Application found: $APP_DIR"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -77,7 +83,7 @@ jobs:
         run: |
           APP_NAME="${{ github.event.inputs.app_name }}"
           IMAGE_NAME="${{ steps.image_name.outputs.name }}"
-          DOCKERFILE_PATH="./apps/$APP_NAME/Dockerfile"
+          DOCKERFILE_PATH="./${{ steps.app_path.outputs.dir }}/Dockerfile"
           
           # Используем commit SHA (первые 8 символов) для версионирования
           COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
