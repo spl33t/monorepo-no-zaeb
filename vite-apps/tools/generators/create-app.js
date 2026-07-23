@@ -8,7 +8,7 @@ const { generateVanillaFiles } = require('./vanilla-files');
 /**
  * Vite app under vite-apps/apps/<name>.
  */
-function createViteApp(appDir, name, framework, port = '80') {
+function createViteApp(appDir, name, framework, port = '5173') {
   const variantFiles =
     framework === 'react'
       ? generateReactFiles(appDir, name)
@@ -24,9 +24,6 @@ function createViteApp(appDir, name, framework, port = '80') {
       build: 'tsc && vite build',
       preview: 'vite preview',
     },
-    devDependencies: {
-      '@monorepo/vite-cli': '*',
-    },
   };
 
   fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify(packageJson, null, 2));
@@ -37,7 +34,8 @@ function createViteApp(appDir, name, framework, port = '80') {
       ...(framework === 'vanilla' ? { jsx: 'preserve' } : {}),
       paths: {
         '@/*': ['./src/*'],
-        '@monorepo/*': ['../../packages/*'],
+        '@root-packages/*': ['../../../packages/*'],
+        '@toolchain-packages/*': ['../../packages/*'],
       },
     },
     include: ['src', 'vite.config.ts'],

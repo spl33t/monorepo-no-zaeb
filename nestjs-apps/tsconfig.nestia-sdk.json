@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "paths": {
+      "@root-packages/*": ["../packages/*"],
+      "@toolchain-packages/*": ["./packages/*"]
+    }
+  },
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "../packages/**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist", "**/src/api"]
+}

@@ -7,24 +7,26 @@ const path = require('path');
 
 /**
  * Саб-монорепы: id → каталоги от корня git-репо.
- * packages/ — свободные папки с кодом (не npm workspace-пакеты).
+ * packages/ — свободные папки (не npm workspace):
+ *   root packages/ — isomorphic; toolchain packages/ — только тулчейн.
  */
+const ROOT_PACKAGES_REL = 'packages';
+
 const TOOLCHAINS = /** @type {const} */ ({
   nestjs: {
-    id: 'nestjs',
     root: 'nestjs-apps',
     appsRel: 'nestjs-apps/apps',
     packagesRel: 'nestjs-apps/packages',
   },
   vite: {
-    id: 'vite',
     root: 'vite-apps',
     appsRel: 'vite-apps/apps',
     packagesRel: 'vite-apps/packages',
   },
 });
 
-const TOOLCHAIN_IDS = /** @type {ToolchainId[]} */ (['nestjs', 'vite']);
+/** @type {ToolchainId[]} */
+const TOOLCHAIN_IDS = Object.keys(TOOLCHAINS);
 
 /**
  * Корень репо (есть nestjs-apps/, vite-apps/, tools/).
@@ -65,20 +67,24 @@ function toolchain(id) {
 }
 
 /**
- * Гарантирует apps/ и packages/ в обоих тулчейнах (+ .gitkeep если пусто).
+ * Гарантирует root packages/ + apps/packages в обоих тулчейнах (+ .gitkeep если пусто).
  * @param {string} [cwd]
  */
 function ensureLayoutDirs(cwd) {
   const root = resolveRoot(cwd);
-  for (const id of TOOLCHAIN_IDS) {
-    const t = TOOLCHAINS[id];
-    for (const rel of [t.appsRel, t.packagesRel]) {
-      const abs = path.join(root, rel);
-      fs.mkdirSync(abs, { recursive: true });
-      const keep = path.join(abs, '.gitkeep');
-      if (!fs.existsSync(keep) && fs.readdirSync(abs).length === 0) {
-        fs.writeFileSync(keep, '');
-      }
+  const dirs = [
+    ROOT_PACKAGES_REL,
+    ...TOOLCHAIN_IDS.flatMap((id) => {
+      const t = TOOLCHAINS[id];
+      return [t.appsRel, t.packagesRel];
+    }),
+  ];
+  for (const rel of dirs) {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(abs, { recursive: true });
+    const keep = path.join(abs, '.gitkeep');
+    if (!fs.existsSync(keep) && fs.readdirSync(abs).length === 0) {
+      fs.writeFileSync(keep, '');
     }
   }
   return root;
@@ -86,67 +92,66 @@ function ensureLayoutDirs(cwd) {
 
 /**
  * @param {ToolchainId} id
- * @param {string} [cwd]
- */
-function appsDir(id, cwd) {
-  return path.join(resolveRoot(cwd), toolchain(id).appsRel);
-}
-
-/**
- * @param {ToolchainId} id
  * @param {string} name
  * @param {string} [cwd]
+ * @returns {{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }}
  */
-function appDir(id, name, cwd) {
-  return path.join(appsDir(id, cwd), name);
-}
-
-/**
- * @param {ToolchainId} id
- * @param {string} name
- */
-function appRelPosix(id, name) {
-  return `${toolchain(id).appsRel}/${name}`.replace(/\\/g, '/');
+function resolveApp(id, name, cwd) {
+  const root = resolveRoot(cwd);
+  const t = toolchain(id);
+  return {
+    toolchain: id,
+    name,
+    absDir: path.join(root, t.appsRel, name),
+    relPosix: `${t.appsRel}/${name}`.replace(/\\/g, '/'),
+  };
 }
 
 /**
  * @param {string} [cwd]
- * @returns {Array<{ world: ToolchainId, name: string, absDir: string, relPosix: string }>}
+ * @returns {Array<{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }>}
  */
 function listApps(cwd) {
   const root = resolveRoot(cwd);
-  /** @type {Array<{ world: ToolchainId, name: string, absDir: string, relPosix: string }>} */
+  /** @type {Array<{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }>} */
   const out = [];
   for (const id of TOOLCHAIN_IDS) {
-    const dir = appsDir(id, root);
-    if (!fs.existsSync(dir)) continue;
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const appsPath = path.join(root, toolchain(id).appsRel);
+    if (!fs.existsSync(appsPath)) continue;
+    for (const entry of fs.readdirSync(appsPath, { withFileTypes: true })) {
       if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-      out.push({
-        world: id,
-        name: entry.name,
-        absDir: path.join(dir, entry.name),
-        relPosix: appRelPosix(id, entry.name),
-      });
+      out.push(resolveApp(id, entry.name, root));
     }
   }
   return out;
 }
 
 /**
+ * Имя сервиса / container в docker-compose: nestjs-api, vite-web, …
+ * @param {ToolchainId} id
  * @param {string} name
- * @param {string} [cwd]
  */
-function findAppByName(name, cwd) {
-  return listApps(cwd).find((a) => a.name === name) ?? null;
+function composeServiceName(id, name) {
+  return `${id}-${name}`;
 }
 
 /**
+ * Найти app по folder-name. При нескольких совпадениях — ошибка (нужен toolchain).
  * @param {string} name
  * @param {string} [cwd]
+ * @param {ToolchainId} [id]
  */
-function appExists(name, cwd) {
-  return Boolean(findAppByName(name, cwd));
+function findAppByName(name, cwd, id) {
+  const matches = listApps(cwd).filter(
+    (a) => a.name === name && (id == null || a.toolchain === id),
+  );
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    throw new Error(
+      `Несколько apps с именем "${name}" (${matches.map((m) => m.toolchain).join(', ')}). Укажи тулчейн.`,
+    );
+  }
+  return matches[0];
 }
 
 /**
@@ -155,14 +160,15 @@ function appExists(name, cwd) {
  * @param {string} [cwd]
  */
 function getDefaultAppName(id, frameworkName, cwd) {
-  const dir = appsDir(id, cwd);
-  if (!fs.existsSync(dir)) return frameworkName;
-
-  if (!fs.existsSync(path.join(dir, frameworkName))) return frameworkName;
+  const root = resolveRoot(cwd);
+  const appsPath = path.join(root, toolchain(id).appsRel);
+  if (!fs.existsSync(appsPath) || !fs.existsSync(path.join(appsPath, frameworkName))) {
+    return frameworkName;
+  }
 
   let counter = 2;
   let appName = `${frameworkName}-${counter}`;
-  while (fs.existsSync(path.join(dir, appName))) {
+  while (fs.existsSync(path.join(appsPath, appName))) {
     counter++;
     appName = `${frameworkName}-${counter}`;
   }
@@ -201,17 +207,13 @@ function getUsedPorts(cwd) {
 
 module.exports = {
   TOOLCHAINS,
-  TOOLCHAIN_IDS,
-  /** @deprecated use TOOLCHAINS */
-  APP_WORLDS: TOOLCHAINS,
+  ROOT_PACKAGES_REL,
   findMonorepoRoot,
   ensureLayoutDirs,
-  appsDir,
-  appDir,
-  appRelPosix,
+  resolveApp,
   listApps,
+  composeServiceName,
   findAppByName,
-  appExists,
   getDefaultAppName,
   getUsedPorts,
 };

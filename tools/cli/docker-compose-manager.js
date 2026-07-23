@@ -5,6 +5,7 @@ const path = require('path');
 const readline = require('readline');
 const { spawn, execSync } = require('child_process');
 const { parseDockerCompose } = require('../lib/docker-compose-parser');
+const { findMonorepoRoot } = require('../lib/monorepo-layout');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -17,15 +18,17 @@ function question(query) {
 
 /**
  * Получает статус контейнеров через docker compose ps
+ * @param {string[]} serviceNames
+ * @param {string} monorepoRoot
  */
-function getContainerStatuses(serviceNames) {
+function getContainerStatuses(serviceNames, monorepoRoot) {
   const statusMap = {};
   
   try {
     // Получаем статус контейнеров в JSON формате
     const output = execSync('docker compose ps --format json', { 
       encoding: 'utf8',
-      cwd: process.cwd(),
+      cwd: monorepoRoot,
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000
     });
@@ -56,7 +59,7 @@ function getContainerStatuses(serviceNames) {
   try {
     const psOutput = execSync('docker ps -a --format "{{.Names}}\t{{.Status}}"', {
       encoding: 'utf8',
-      cwd: process.cwd(),
+      cwd: monorepoRoot,
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000
     });
@@ -195,8 +198,11 @@ function parseServiceNumbers(input, totalServices) {
 
 /**
  * Запускает docker compose команду
+ * @param {string[]} serviceNames
+ * @param {string} target
+ * @param {string} monorepoRoot
  */
-function runDockerCompose(serviceNames, target) {
+function runDockerCompose(serviceNames, target, monorepoRoot) {
   const args = ['compose', 'up', '--build'];
   
   // Для development добавляем флаг --watch
@@ -221,7 +227,8 @@ function runDockerCompose(serviceNames, target) {
     ...args
   ], {
     stdio: 'inherit',
-    shell: true
+    shell: true,
+    cwd: monorepoRoot,
   });
 
   child.on('error', (error) => {
@@ -242,10 +249,19 @@ function runDockerCompose(serviceNames, target) {
 async function manageDockerCompose() {
   console.log('\n🐳 Docker Compose Manager\n');
 
-  const composePath = path.join(process.cwd(), 'docker-compose.yml');
+  let monorepoRoot;
+  try {
+    monorepoRoot = findMonorepoRoot();
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    rl.close();
+    process.exit(1);
+  }
+
+  const composePath = path.join(monorepoRoot, 'docker-compose.yml');
   
   if (!fs.existsSync(composePath)) {
-    console.error(`❌ Файл docker-compose.yml не найден в ${process.cwd()}`);
+    console.error(`❌ Файл docker-compose.yml не найден в ${monorepoRoot}`);
     console.log('💡 Создайте docker-compose.yml или запустите: npm run docker:create-compose');
     rl.close();
     process.exit(1);
@@ -272,7 +288,7 @@ async function manageDockerCompose() {
 
   // Получаем статусы контейнеров
   console.log('🔍 Проверяю статус контейнеров...');
-  const statuses = getContainerStatuses(serviceNames);
+  const statuses = getContainerStatuses(serviceNames, monorepoRoot);
 
   // Выводим таблицу сервисов
   displayServicesTable(services, statuses);
@@ -315,7 +331,7 @@ async function manageDockerCompose() {
   console.log(`\n📌 Target: ${target}`);
 
   // Запускаем команду
-  runDockerCompose(selectedServices, target);
+  runDockerCompose(selectedServices, target, monorepoRoot);
 }
 
 // Запуск
@@ -327,4 +343,3 @@ if (require.main === module) {
   });
 }
 
-module.exports = { manageDockerCompose };

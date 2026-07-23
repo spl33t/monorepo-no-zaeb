@@ -6,13 +6,20 @@ const readline = require('readline');
 const { parseDockerCompose, stringifyDockerCompose } = require('../lib/docker-compose-parser');
 const layout = require('../lib/monorepo-layout');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+let rl = null;
+
+function getRl() {
+  if (!rl) {
+    rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+  }
+  return rl;
+}
 
 function question(query) {
-  return new Promise((resolve) => rl.question(query, resolve));
+  return new Promise((resolve) => getRl().question(query, resolve));
 }
 
 /**
@@ -64,26 +71,16 @@ function getAppPort(app) {
   );
 }
 
-function getAppType(app) {
-  try {
-    if (app.world === 'vite') return 'vite';
-    if (fs.existsSync(path.join(app.absDir, 'vite.config.ts'))) return 'vite';
-    return 'node';
-  } catch (error) {
-    console.warn(`⚠️  Ошибка при определении типа для ${app.name}: ${error.message}`);
-    return 'node';
-  }
-}
-
 function createServiceConfig(app, port) {
-  const toolchain = layout.TOOLCHAINS[app.world].root;
+  const toolchainRoot = layout.TOOLCHAINS[app.toolchain].root;
+  const service = layout.composeServiceName(app.toolchain, app.name);
   return {
     build: {
-      context: `./${toolchain}`,
-      dockerfile: `apps/${app.name}/Dockerfile`,
+      context: '.',
+      dockerfile: `${toolchainRoot}/apps/${app.name}/Dockerfile`,
       target: '${DOCKER_TARGET:-development}',
     },
-    container_name: app.name,
+    container_name: service,
     ports: [`${port}:${port}`],
     env_file: [`${app.relPosix}/.env`],
     restart: 'unless-stopped',
@@ -91,13 +88,18 @@ function createServiceConfig(app, port) {
       watch: [
         {
           action: 'sync',
-          path: `./${toolchain}/apps/${app.name}`,
-          target: `/app/apps/${app.name}`,
+          path: `./${toolchainRoot}/apps/${app.name}`,
+          target: `/src/${toolchainRoot}/apps/${app.name}`,
         },
         {
           action: 'sync',
-          path: `./${toolchain}/packages`,
-          target: `/app/packages`,
+          path: `./${toolchainRoot}/packages`,
+          target: `/src/${toolchainRoot}/packages`,
+        },
+        {
+          action: 'sync',
+          path: `./${layout.ROOT_PACKAGES_REL}`,
+          target: `/src/${layout.ROOT_PACKAGES_REL}`,
         },
       ],
     },
@@ -118,7 +120,7 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
 
   const fail = (message) => {
     console.error(`❌ ${message}`);
-    if (isInteractive) rl.close();
+    if (rl) rl.close();
     if (asCli) process.exit(1);
     throw new Error(message);
   };
@@ -161,11 +163,13 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
       console.log('');
     }
 
-    const appsToAdd = availableApps.filter((a) => !existingServices.includes(a.name));
+    const appsToAdd = availableApps.filter(
+      (a) => !existingServices.includes(layout.composeServiceName(a.toolchain, a.name)),
+    );
 
     if (appsToAdd.length === 0) {
       console.log('✅ Все доступные приложения уже добавлены в docker-compose.yml');
-      rl.close();
+      if (rl) rl.close();
       return;
     }
 
@@ -173,8 +177,7 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     appsToAdd.forEach((a, index) => {
       try {
         const port = getAppPort(a);
-        const type = getAppType(a);
-        console.log(`  ${index + 1}. ${a.relPosix} (порт: ${port}, тип: ${type})`);
+        console.log(`  ${index + 1}. ${a.relPosix} (порт: ${port}, тип: ${a.toolchain})`);
       } catch (error) {
         console.log(`  ${index + 1}. ${a.relPosix} (ошибка: ${error.message})`);
       }
@@ -191,18 +194,18 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     app = appsToAdd[appIndex];
   } else {
     if (worldHint) {
-      const abs = layout.appDir(worldHint, appNameArg, root);
-      if (fs.existsSync(abs)) {
-        app = {
-          world: worldHint,
-          name: appNameArg,
-          absDir: abs,
-          relPosix: layout.appRelPosix(worldHint, appNameArg),
-        };
+      const resolved = layout.resolveApp(worldHint, appNameArg, root);
+      if (fs.existsSync(resolved.absDir)) {
+        app = resolved;
       }
     }
     if (!app) {
-      app = layout.findAppByName(appNameArg, root);
+      try {
+        app = layout.findAppByName(appNameArg, root);
+      } catch (error) {
+        fail(error.message);
+        return;
+      }
     }
     if (!app) {
       fail(`Приложение "${appNameArg}" не найдено`);
@@ -210,25 +213,25 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     }
   }
 
-  if (compose.services[app.name]) {
-    console.log(`⚠️  Приложение "${app.name}" уже добавлено в docker-compose.yml`);
-    if (isInteractive) rl.close();
+  const service = layout.composeServiceName(app.toolchain, app.name);
+
+  if (compose.services[service]) {
+    console.log(`⚠️  Сервис "${service}" уже есть в docker-compose.yml`);
+    if (rl) rl.close();
     return;
   }
 
   let port;
-  let appType;
   try {
     port = getAppPort(app);
-    appType = getAppType(app);
   } catch (error) {
-    fail(`Ошибка при получении информации о "${app.name}": ${error.message}`);
+    fail(`Ошибка при получении информации о "${app.relPosix}": ${error.message}`);
     return;
   }
 
-  console.log(`\n📦 Добавляю "${app.relPosix}" (порт: ${port}, тип: ${appType})...`);
+  console.log(`\n📦 Добавляю "${app.relPosix}" → сервис ${service} (порт: ${port}, тип: ${app.toolchain})...`);
 
-  compose.services[app.name] = createServiceConfig(app, port);
+  compose.services[service] = createServiceConfig(app, port);
 
   try {
     fs.writeFileSync(composePath, stringifyDockerCompose(compose));
@@ -237,13 +240,13 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     return;
   }
 
-  console.log(`✅ Приложение "${app.name}" добавлено в docker-compose.yml`);
+  console.log(`✅ Сервис "${service}" добавлен в docker-compose.yml`);
   console.log(`\n📝 Файл сохранен: ${composePath}`);
 
   if (isInteractive) {
     console.log('\n💡 Watch Mode отслеживает:');
     console.log(`   - ${app.relPosix}/`);
-    console.log(`   - ${layout.TOOLCHAINS[app.world].packagesRel}/`);
+    console.log(`   - ${layout.TOOLCHAINS[app.toolchain].packagesRel}/`);
     rl.close();
   }
 }

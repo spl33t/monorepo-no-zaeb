@@ -9,7 +9,7 @@ const toolchainRoot = path.resolve(__dirname, '../..');
 runCreateApp({
   world: 'vite',
   toolchainRoot,
-  defaultPort: '80',
+  defaultPort: '5173',
   defaultKind: 'react',
   title: 'Vite приложение (vite-apps)',
   frameworks: [
@@ -26,7 +26,7 @@ runCreateApp({
 Vite app → vite-apps/apps/<name>
 
   cd vite-apps && npm run create:app
-  npm run create:app -- --kind react --name web [--port 80] [--no-install]
+  npm run create:app -- --kind react --name web [--port 5173] [--no-install]
 
 Флаги:
   --kind / --variant   react | vanilla (или vite-react | vite-vanilla)

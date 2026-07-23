@@ -1,56 +1,64 @@
 /**
- * Dockerfile for NestJS app — build context = nestjs-apps/
+ * Dockerfile for Nest app — build context = monorepo root.
+ * Deps: тот же `install-deps.js` без флагов (видит только скопированные package.json).
  * @param {string} appName
  * @returns {string}
  */
 function generateNodeDockerfile(appName) {
-  return `# Build context: nestjs-apps/
-# docker build -f apps/${appName}/Dockerfile --target production .
+  return `# Build context: monorepo root
+# docker build -f nestjs-apps/apps/${appName}/Dockerfile --target production .
+# Install: COPY package.json нужных корней → node tools/cli/install-deps.js
 
-FROM node:22-alpine AS builder
+FROM node:22-alpine AS deps
 
-WORKDIR /app
+WORKDIR /src
 
 COPY package.json package-lock.json ./
-COPY tsconfig.json ./
-COPY tools/nest-cli ./tools/nest-cli/
-COPY apps/${appName} ./apps/${appName}/
+COPY tools/cli/install-deps.js ./tools/cli/
+COPY nestjs-apps/package.json nestjs-apps/package-lock.json ./nestjs-apps/
+COPY nestjs-apps/apps/${appName}/package.json ./nestjs-apps/apps/${appName}/
+
+RUN node tools/cli/install-deps.js
+
+# builder/development ставят deps одинаково (без --omit=dev) → общая стадия deps.
+# production ставит отдельно: ENV NODE_ENV=production меняет install-deps.js на --omit=dev.
+FROM deps AS builder
+
 COPY packages ./packages/
+COPY nestjs-apps/tsconfig.json ./nestjs-apps/
+COPY nestjs-apps/apps/${appName} ./nestjs-apps/apps/${appName}/
+COPY nestjs-apps/packages ./nestjs-apps/packages/
 
-RUN npm ci
-
-WORKDIR /app/apps/${appName}
+WORKDIR /src/nestjs-apps/apps/${appName}
 RUN npm run build
 
 FROM node:22-alpine AS production
 
-WORKDIR /app
+WORKDIR /src
+ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-COPY tools/nest-cli ./tools/nest-cli/
-COPY apps/${appName}/package.json ./apps/${appName}/
+COPY tools/cli/install-deps.js ./tools/cli/
+COPY nestjs-apps/package.json nestjs-apps/package-lock.json ./nestjs-apps/
+COPY nestjs-apps/apps/${appName}/package.json ./nestjs-apps/apps/${appName}/
 
-RUN npm ci --omit=dev
+RUN node tools/cli/install-deps.js
 
-COPY --from=builder /app/apps/${appName}/dist ./apps/${appName}/dist
+COPY packages ./packages/
+COPY --from=builder /src/nestjs-apps/apps/${appName}/dist ./nestjs-apps/apps/${appName}/dist
 
-WORKDIR /app/apps/${appName}
+WORKDIR /src/nestjs-apps/apps/${appName}
 
 CMD ["npm", "run", "start"]
 
-FROM node:22-alpine AS development
+FROM deps AS development
 
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-COPY tsconfig.json ./
-COPY tools/nest-cli ./tools/nest-cli/
-COPY apps/${appName} ./apps/${appName}/
 COPY packages ./packages/
+COPY nestjs-apps/tsconfig.json ./nestjs-apps/
+COPY nestjs-apps/apps/${appName} ./nestjs-apps/apps/${appName}/
+COPY nestjs-apps/packages ./nestjs-apps/packages/
 
-RUN npm ci
-
-WORKDIR /app/apps/${appName}
+WORKDIR /src/nestjs-apps/apps/${appName}
 
 CMD ["npm", "run", "dev"]
 `;

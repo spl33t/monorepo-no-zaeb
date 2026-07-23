@@ -15,7 +15,7 @@ cd nestjs-apps && npm run create:app
 cd vite-apps && npm run create:app
 ```
 
-Общий код — папки в `*/packages/` (руками). Импорт: `@monorepo/<name>`.
+Общий код — папки руками: root `packages/` → `@root-packages/<name>`; `*/packages/` → `@toolchain-packages/<name>`.
 
 ```bash
 cd nestjs-apps && npm run dev -w @apps/<app>

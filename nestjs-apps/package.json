@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "description": "NestJS toolchain — framework deps; each app has its own nest-cli.json",
   "workspaces": [
-    "apps/*",
-    "tools/nest-cli"
+    "apps/*"
   ],
   "exports": {
     "./package.json": "./package.json"
@@ -14,15 +13,15 @@
     "create:app": "node tools/cli/create-app.js"
   },
   "dependencies": {
-    "@nestjs/cli": "^10.0.0",
-    "@nestjs/common": "^10.0.0",
-    "@nestjs/core": "^10.0.0",
-    "@nestjs/platform-express": "^10.0.0",
-    "@nestjs/schematics": "^10.0.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
     "@types/node": "^20.0.0",
     "dotenv": "^16.3.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
-    "typescript": "~5.7.2"
+    "typescript": "^6.0.3"
   }
 }

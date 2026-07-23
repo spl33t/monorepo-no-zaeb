@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "description": "Vite toolchain — React/Vite deps; apps stay thin",
   "workspaces": [
-    "apps/*",
-    "tools/vite-cli"
+    "apps/*"
   ],
   "exports": {
     "./package.json": "./package.json"

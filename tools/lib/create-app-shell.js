@@ -119,8 +119,8 @@ async function scaffold(config, kind, name, port) {
 
   layout.ensureLayoutDirs(monorepoRoot);
 
-  if (fs.existsSync(targetDir) || layout.appExists(name, monorepoRoot)) {
-    console.error(`❌ Приложение "${name}" уже существует`);
+  if (fs.existsSync(targetDir)) {
+    console.error(`❌ Приложение "${name}" уже существует в ${path.basename(toolchainRoot)}`);
     process.exit(1);
   }
 
@@ -291,7 +291,4 @@ async function interactive(config) {
 
 module.exports = {
   runCreateApp,
-  resolveMonorepoRoot,
-  parseCliArgs,
-  getAvailablePort,
 };

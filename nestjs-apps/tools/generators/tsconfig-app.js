@@ -1,24 +1,23 @@
 /**
- * Nest app tsconfig — mirror emit от корня тулчейна.
- * rootDir: ../.. фиксирует dist/apps/<name>/src/... даже без импортов из packages.
- * В dist попадают только реально импортированные packages.
+ * Thin Nest app tsconfig.
+ * rootDir = monorepo root → emit dist/nestjs-apps/... и dist/packages/...
+ * @root-packages/*     → monorepo packages/ (isomorphic)
+ * @toolchain-packages/* → nestjs-apps/packages/
  */
 function generateNodeTsconfig(_options = {}) {
   return {
     extends: '../../tsconfig.json',
     compilerOptions: {
-      rootDir: '../..',
+      rootDir: '../../..',
       outDir: 'dist',
       noEmit: false,
-      sourceMap: true,
-      declaration: false,
       paths: {
         '@/*': ['./src/*'],
-        '@monorepo/*': ['../../packages/*'],
+        '@root-packages/*': ['../../../packages/*'],
+        '@toolchain-packages/*': ['../../packages/*'],
       },
     },
-    include: ['src/**/*'],
-    exclude: ['node_modules', 'dist'],
+    include: ['src'],
   };
 }
 
