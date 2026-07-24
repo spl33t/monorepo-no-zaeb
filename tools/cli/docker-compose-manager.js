@@ -23,26 +23,26 @@ function question(query) {
  */
 function getContainerStatuses(serviceNames, monorepoRoot) {
   const statusMap = {};
-  
+
   try {
     // Получаем статус контейнеров в JSON формате
-    const output = execSync('docker compose ps --format json', { 
+    const output = execSync('docker compose ps --format json', {
       encoding: 'utf8',
       cwd: monorepoRoot,
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000
     });
-    
+
     // Парсим JSON строки (каждая строка - отдельный JSON объект)
     const lines = output.trim().split('\n').filter(line => line.trim());
-    
+
     lines.forEach(line => {
       try {
         const container = JSON.parse(line);
         // Пробуем разные поля для имени сервиса
         const serviceName = container.Service || container.service || container.Name || container.name;
         const state = container.State || container.state || container.Status || container.status;
-        
+
         if (serviceName && state) {
           statusMap[serviceName] = state;
         }
@@ -54,7 +54,7 @@ function getContainerStatuses(serviceNames, monorepoRoot) {
     // Если команда не выполнилась (например, контейнеры не запущены), возвращаем пустой объект
     // Это нормально, значит все сервисы остановлены
   }
-  
+
   // Также проверяем через docker ps для более точного сопоставления
   try {
     const psOutput = execSync('docker ps -a --format "{{.Names}}\t{{.Status}}"', {
@@ -63,18 +63,18 @@ function getContainerStatuses(serviceNames, monorepoRoot) {
       stdio: ['pipe', 'pipe', 'ignore'],
       timeout: 5000
     });
-    
+
     const psLines = psOutput.trim().split('\n').filter(line => line.trim());
-    
+
     psLines.forEach(line => {
       const [containerName, ...statusParts] = line.split('\t');
       const status = statusParts.join(' ');
-      
+
       // Сопоставляем имя контейнера с именем сервиса
       // В docker-compose имя контейнера обычно совпадает с именем сервиса
       // или имеет формат: <project>_<service>_<number>
       serviceNames.forEach(serviceName => {
-        if (containerName === serviceName || 
+        if (containerName === serviceName ||
             containerName.startsWith(serviceName + '_') ||
             containerName.endsWith('_' + serviceName)) {
           // Извлекаем состояние из статуса (например, "Up 5 minutes" -> "running")
@@ -91,7 +91,7 @@ function getContainerStatuses(serviceNames, monorepoRoot) {
   } catch (error) {
     // Игнорируем ошибки
   }
-  
+
   return statusMap;
 }
 
@@ -102,9 +102,9 @@ function formatStatus(status) {
   if (!status || status === 'unknown') {
     return '○ остановлен';
   }
-  
+
   const statusLower = status.toLowerCase();
-  
+
   if (statusLower.includes('running') || statusLower === 'up') {
     return '✓ запущен';
   } else if (statusLower.includes('exited') || statusLower === 'stopped') {
@@ -153,7 +153,7 @@ function getServicePorts(serviceConfig) {
  */
 function displayServicesTable(services, statuses = {}) {
   const serviceNames = Object.keys(services);
-  
+
   if (serviceNames.length === 0) {
     console.log('❌ Сервисы не найдены в docker-compose.yml');
     return;
@@ -163,7 +163,7 @@ function displayServicesTable(services, statuses = {}) {
   console.log('┌─────┬─────────────────────────────────────┬──────────────────┬──────────────┐');
   console.log('│ №   │ Название сервиса                    │ Статус           │ Порты        │');
   console.log('├─────┼─────────────────────────────────────┼──────────────────┼──────────────┤');
-  
+
   serviceNames.forEach((name, index) => {
     const num = (index + 1).toString().padEnd(3);
     const serviceName = name.padEnd(35);
@@ -173,7 +173,7 @@ function displayServicesTable(services, statuses = {}) {
     const portsPadded = ports.padEnd(12);
     console.log(`│ ${num} │ ${serviceName} │ ${statusPadded} │ ${portsPadded} │`);
   });
-  
+
   console.log('└─────┴─────────────────────────────────────┴──────────────────┴──────────────┘');
   console.log(`\nВсего сервисов: ${serviceNames.length}`);
 }
@@ -204,12 +204,12 @@ function parseServiceNumbers(input, totalServices) {
  */
 function runDockerCompose(serviceNames, target, monorepoRoot) {
   const args = ['compose', 'up', '--build'];
-  
+
   // Для development добавляем флаг --watch
   if (target === 'development') {
     args.push('--watch');
   }
-  
+
   // Добавляем имена сервисов если они указаны
   if (serviceNames.length > 0) {
     args.push(...serviceNames);
@@ -259,7 +259,7 @@ async function manageDockerCompose() {
   }
 
   const composePath = path.join(monorepoRoot, 'docker-compose.yml');
-  
+
   if (!fs.existsSync(composePath)) {
     console.error(`❌ Файл docker-compose.yml не найден в ${monorepoRoot}`);
     console.log('💡 Создайте docker-compose.yml или запустите: npm run docker:create-compose');
@@ -318,9 +318,9 @@ async function manageDockerCompose() {
   console.log('\n🎯 Выберите target:');
   console.log('   1. development (dev)');
   console.log('   2. production (prod)');
-  
+
   const targetChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
-  
+
   let target;
   if (targetChoice === '2' || targetChoice.toLowerCase() === 'prod' || targetChoice.toLowerCase() === 'production') {
     target = 'production';

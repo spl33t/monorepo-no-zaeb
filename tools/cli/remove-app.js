@@ -72,10 +72,13 @@ function removeFromDockerCompose(root, service) {
  * @param {string} root
  */
 function removeApp(app, root) {
-  const service = layout.composeServiceName(app.toolchain, app.name);
-  const removedFromCompose = removeFromDockerCompose(root, service);
+  // Сначала папка: если rmSync упадёт (например, EPERM — файл ещё занят на Windows),
+  // docker-compose.yml должен остаться нетронутым, чтобы состояние не разъехалось.
   fs.rmSync(app.absDir, { recursive: true, force: true });
   console.log(`✅ Удалено: ${app.relPosix}`);
+
+  const service = layout.composeServiceName(app.toolchain, app.name);
+  const removedFromCompose = removeFromDockerCompose(root, service);
   if (removedFromCompose) {
     console.log(`✅ Сервис "${service}" убран из docker-compose.yml`);
   }
