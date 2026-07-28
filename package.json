@@ -1,12 +1,19 @@
 {
   "name": "monorepo-no-zaeb",
   "private": true,
-  "description": "Root: tools + isomorphic packages/* deps (free-form folders, not workspaces)",
+  "description": "pnpm workspace root: apps/* + tools/ + isomorphic packages/*",
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "--------------------------------Global utils------------------------------------": "",
-    "deps:install": "node tools/cli/install-deps.js",
-    "kill:port": "node tools/cli/kill-port.js",
+    "deps:install": "pnpm install",
+    "dev": "node tools/cli/run-script.js dev",
+    "build": "node tools/cli/run-script.js build",
+    "create:app": "node tools/cli/create-app.js",
     "remove:app": "node tools/cli/remove-app.js",
+    "create:package": "node tools/cli/create-package.js",
+    "remove:package": "node tools/cli/remove-package.js",
+    "link:package": "node tools/cli/link-package.js",
+    "kill:port": "node tools/cli/kill-port.js",
     "--------------------------------Docker-----------------------------------------": "",
     "docker:create-compose": "node tools/cli/create-docker-compose.js",
     "docker:compose-manager": "node tools/cli/docker-compose-manager.js",
@@ -17,10 +24,11 @@
     "docker:ps": "docker compose ps"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.5.2",
     "cross-env": "^7.0.3"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "catalog:shared",
     "yaml": "^2.8.2"
   }
 }

@@ -2,24 +2,16 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { parseDockerCompose, stringifyDockerCompose } = require('../lib/docker-compose-parser');
 const layout = require('../lib/monorepo-layout');
 
-let rl = null;
-
-function getRl() {
-  if (!rl) {
-    rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-  }
-  return rl;
-}
-
-function question(query) {
-  return new Promise((resolve) => getRl().question(query, resolve));
+/**
+ * `@inquirer/prompts` — ESM-only с v8, грузится через динамический `import()`
+ * — стандартный мост ESM→CJS в Node.
+ * @returns {Promise<{ select: Function }>}
+ */
+function loadPrompts() {
+  return import('@inquirer/prompts');
 }
 
 /**
@@ -72,12 +64,11 @@ function getAppPort(app) {
 }
 
 function createServiceConfig(app, port) {
-  const toolchainRoot = layout.TOOLCHAINS[app.toolchain].root;
-  const service = layout.composeServiceName(app.toolchain, app.name);
+  const service = layout.composeServiceName(app.kind, app.name);
   return {
     build: {
       context: '.',
-      dockerfile: `${toolchainRoot}/apps/${app.name}/Dockerfile`,
+      dockerfile: `apps/${app.name}/Dockerfile`,
       target: '${DOCKER_TARGET:-development}',
     },
     container_name: service,
@@ -88,18 +79,13 @@ function createServiceConfig(app, port) {
       watch: [
         {
           action: 'sync',
-          path: `./${toolchainRoot}/apps/${app.name}`,
-          target: `/src/${toolchainRoot}/apps/${app.name}`,
+          path: `./${app.relPosix}`,
+          target: `/src/${app.relPosix}`,
         },
         {
           action: 'sync',
-          path: `./${toolchainRoot}/packages`,
-          target: `/src/${toolchainRoot}/packages`,
-        },
-        {
-          action: 'sync',
-          path: `./${layout.ROOT_PACKAGES_REL}`,
-          target: `/src/${layout.ROOT_PACKAGES_REL}`,
+          path: `./${layout.PACKAGES_REL}`,
+          target: `/src/${layout.PACKAGES_REL}`,
         },
       ],
     },
@@ -108,10 +94,9 @@ function createServiceConfig(app, port) {
 
 /**
  * @param {string|null} appNameArg
- * @param {'nestjs'|'vite'|null} worldHint
  * @param {string|null} repoRoot
  */
-async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRoot = null) {
+async function addAppToDockerCompose(appNameArg = null, repoRoot = null) {
   const root = repoRoot || layout.findMonorepoRoot();
   const composePath = path.join(root, 'docker-compose.yml');
   let compose = { services: {}, networks: {}, volumes: {} };
@@ -120,7 +105,6 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
 
   const fail = (message) => {
     console.error(`❌ ${message}`);
-    if (rl) rl.close();
     if (asCli) process.exit(1);
     throw new Error(message);
   };
@@ -150,7 +134,7 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     console.log(`🔍 Найдено приложений: ${availableApps.length}`);
 
     if (availableApps.length === 0) {
-      fail('Не найдено приложений с Dockerfile в nestjs-apps/apps или vite-apps/apps');
+      fail('Не найдено приложений с Dockerfile в apps/');
       return;
     }
 
@@ -164,48 +148,34 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     }
 
     const appsToAdd = availableApps.filter(
-      (a) => !existingServices.includes(layout.composeServiceName(a.toolchain, a.name)),
+      (a) => !existingServices.includes(layout.composeServiceName(a.kind, a.name)),
     );
 
     if (appsToAdd.length === 0) {
       console.log('✅ Все доступные приложения уже добавлены в docker-compose.yml');
-      if (rl) rl.close();
       return;
     }
 
-    console.log('Доступные приложения для добавления:');
-    appsToAdd.forEach((a, index) => {
-      try {
-        const port = getAppPort(a);
-        console.log(`  ${index + 1}. ${a.relPosix} (порт: ${port}, тип: ${a.toolchain})`);
-      } catch (error) {
-        console.log(`  ${index + 1}. ${a.relPosix} (ошибка: ${error.message})`);
-      }
+    const { select } = await loadPrompts();
+    app = await select({
+      message: 'Выберите приложение для добавления',
+      choices: appsToAdd.map((a) => {
+        let label;
+        try {
+          const port = getAppPort(a);
+          label = `${a.relPosix} (порт: ${port}, тип: ${a.kind})`;
+        } catch (error) {
+          label = `${a.relPosix} (ошибка: ${error.message})`;
+        }
+        return { name: label, value: a };
+      }),
     });
-
-    const choice = await question(`\nВыберите приложение для добавления [1-${appsToAdd.length}]: `);
-    const appIndex = parseInt(choice, 10) - 1;
-
-    if (isNaN(appIndex) || appIndex < 0 || appIndex >= appsToAdd.length) {
-      fail(`Неверный выбор. Введите число от 1 до ${appsToAdd.length}`);
-      return;
-    }
-
-    app = appsToAdd[appIndex];
   } else {
-    if (worldHint) {
-      const resolved = layout.resolveApp(worldHint, appNameArg, root);
-      if (fs.existsSync(resolved.absDir)) {
-        app = resolved;
-      }
-    }
-    if (!app) {
-      try {
-        app = layout.findAppByName(appNameArg, root);
-      } catch (error) {
-        fail(error.message);
-        return;
-      }
+    try {
+      app = layout.findAppByName(appNameArg, root);
+    } catch (error) {
+      fail(error.message);
+      return;
     }
     if (!app) {
       fail(`Приложение "${appNameArg}" не найдено`);
@@ -213,11 +183,10 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     }
   }
 
-  const service = layout.composeServiceName(app.toolchain, app.name);
+  const service = layout.composeServiceName(app.kind, app.name);
 
   if (compose.services[service]) {
     console.log(`⚠️  Сервис "${service}" уже есть в docker-compose.yml`);
-    if (rl) rl.close();
     return;
   }
 
@@ -229,7 +198,7 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
     return;
   }
 
-  console.log(`\n📦 Добавляю "${app.relPosix}" → сервис ${service} (порт: ${port}, тип: ${app.toolchain})...`);
+  console.log(`\n📦 Добавляю "${app.relPosix}" → сервис ${service} (порт: ${port}, тип: ${app.kind})...`);
 
   compose.services[service] = createServiceConfig(app, port);
 
@@ -246,8 +215,7 @@ async function addAppToDockerCompose(appNameArg = null, worldHint = null, repoRo
   if (isInteractive) {
     console.log('\n💡 Watch Mode отслеживает:');
     console.log(`   - ${app.relPosix}/`);
-    console.log(`   - ${layout.TOOLCHAINS[app.toolchain].packagesRel}/`);
-    rl.close();
+    console.log(`   - ${layout.PACKAGES_REL}/`);
   }
 }
 
@@ -260,8 +228,11 @@ module.exports = { addAppToDockerCompose };
 
 if (require.main === module) {
   createDockerCompose().catch((err) => {
+    if (err?.name === 'ExitPromptError') {
+      console.log('\nОтменено');
+      process.exit(0);
+    }
     console.error('❌ Ошибка:', err.message);
-    if (rl) rl.close();
     process.exit(1);
   });
 }

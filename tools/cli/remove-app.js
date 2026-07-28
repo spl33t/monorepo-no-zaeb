@@ -2,26 +2,21 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { execSync } = require('child_process');
 const layout = require('../lib/monorepo-layout');
 const { parseDockerCompose, stringifyDockerCompose } = require('../lib/docker-compose-parser');
 
-let rl = null;
-
-function getRl() {
-  if (!rl) {
-    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  }
-  return rl;
-}
-
-function question(query) {
-  return new Promise((resolve) => getRl().question(query, resolve));
+/**
+ * `@inquirer/prompts` — ESM-only с v8, грузится через динамический `import()`
+ * — стандартный мост ESM→CJS в Node.
+ * @returns {Promise<{ checkbox: Function, confirm: Function }>}
+ */
+function loadPrompts() {
+  return import('@inquirer/prompts');
 }
 
 function parseArgv(argv) {
-  const out = { help: false, noInstall: false, yes: false, toolchain: undefined, name: undefined };
+  const out = { help: false, noInstall: false, yes: false, kind: undefined, name: undefined };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -37,8 +32,8 @@ function parseArgv(argv) {
       out.yes = true;
       continue;
     }
-    if (a === '--toolchain') {
-      out.toolchain = argv[++i];
+    if (a === '--kind') {
+      out.kind = argv[++i];
       continue;
     }
     if (a.startsWith('-')) throw new Error(`Неизвестный флаг: ${a}`);
@@ -68,7 +63,7 @@ function removeFromDockerCompose(root, service) {
 }
 
 /**
- * @param {ReturnType<typeof layout.resolveApp>} app
+ * @param {{ kind: string, name: string, absDir: string, relPosix: string }} app
  * @param {string} root
  */
 function removeApp(app, root) {
@@ -77,32 +72,31 @@ function removeApp(app, root) {
   fs.rmSync(app.absDir, { recursive: true, force: true });
   console.log(`✅ Удалено: ${app.relPosix}`);
 
-  const service = layout.composeServiceName(app.toolchain, app.name);
+  const service = layout.composeServiceName(app.kind, app.name);
   const removedFromCompose = removeFromDockerCompose(root, service);
   if (removedFromCompose) {
     console.log(`✅ Сервис "${service}" убран из docker-compose.yml`);
   }
 }
 
-async function maybeInstall(toolchainRoot, shouldInstall) {
-  const label = path.basename(toolchainRoot);
+async function maybeInstall(monorepoRoot, shouldInstall) {
   if (!shouldInstall) {
-    console.log(`\n⏭️  Пропущена установка. Вручную: npm install (в ${label}/)`);
+    console.log('\n⏭️  Пропущена установка. Вручную: pnpm install');
     return;
   }
-  console.log(`\n📦 npm install (${label})...`);
+  console.log('\n📦 pnpm install...');
   try {
-    execSync('npm install', { stdio: 'inherit', cwd: toolchainRoot });
+    execSync('pnpm install', { stdio: 'inherit', cwd: monorepoRoot });
     console.log('\n✅ Готово');
   } catch {
-    console.warn(`\n⚠️  Установите вручную: npm install (в ${label}/)`);
+    console.warn('\n⚠️  Установите вручную: pnpm install');
   }
 }
 
 async function namedFlow(root, cli) {
   let app;
   try {
-    app = layout.findAppByName(cli.name, root, cli.toolchain);
+    app = layout.findAppByName(cli.name, root, cli.kind);
   } catch (error) {
     console.error(`❌ ${error.message}`);
     process.exit(1);
@@ -113,17 +107,16 @@ async function namedFlow(root, cli) {
   }
 
   if (!cli.yes) {
-    const answer = await question(`Удалить ${app.relPosix}? (y/n) [n]: `);
-    if (rl) rl.close();
-    if (!/^y(es)?$/i.test((answer || '').trim())) {
+    const { confirm } = await loadPrompts();
+    const proceed = await confirm({ message: `Удалить ${app.relPosix}?`, default: false });
+    if (!proceed) {
       console.log('Отменено');
       return;
     }
   }
 
-  const toolchainRoot = path.join(root, layout.TOOLCHAINS[app.toolchain].root);
   removeApp(app, root);
-  await maybeInstall(toolchainRoot, !cli.noInstall);
+  await maybeInstall(root, !cli.noInstall);
 }
 
 async function interactiveFlow(root) {
@@ -133,37 +126,41 @@ async function interactiveFlow(root) {
     return;
   }
 
-  console.log('\n🗑️  Удаление приложения\n');
-  apps.forEach((a, i) => console.log(`  ${i + 1}. ${a.relPosix} (${a.toolchain})`));
+  const { checkbox, confirm } = await loadPrompts();
 
-  const choice = await question(`\nНомер [1-${apps.length}]: `);
-  const idx = parseInt(choice, 10) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= apps.length) {
-    console.error('❌ Неверный выбор');
-    if (rl) rl.close();
-    process.exit(1);
-  }
+  console.log('\n🗑️  Удаление приложений\n');
+  const selectedApps = await checkbox({
+    message: 'Выберите приложения',
+    choices: apps.map((a) => ({ name: `${a.relPosix} (${a.kind})`, value: a })),
+    theme: {
+      style: {
+        renderSelectedChoices: (chosen) => chosen.map((c) => c.value.relPosix).join(', '),
+      },
+    },
+  });
 
-  const app = apps[idx];
-  const confirm = await question(`Удалить ${app.relPosix}? (y/n) [n]: `);
-  if (!/^y(es)?$/i.test((confirm || '').trim())) {
-    console.log('Отменено');
-    if (rl) rl.close();
+  if (selectedApps.length === 0) {
+    console.log('Ничего не выбрано');
     return;
   }
 
-  const toolchainRoot = path.join(root, layout.TOOLCHAINS[app.toolchain].root);
-  removeApp(app, root);
-  const install = (await question('Установить зависимости заново? (y/n) [y]: ')) || 'y';
-  if (rl) rl.close();
-  await maybeInstall(toolchainRoot, /^y(es)?$/i.test(install.trim()));
+  const list = selectedApps.map((a) => a.relPosix).join(', ');
+  const proceed = await confirm({ message: `Удалить ${list}?`, default: false });
+  if (!proceed) {
+    console.log('Отменено');
+    return;
+  }
+
+  selectedApps.forEach((app) => removeApp(app, root));
+  const shouldInstall = await confirm({ message: 'Установить зависимости заново?', default: true });
+  await maybeInstall(root, shouldInstall);
 }
 
 async function run() {
   const root = layout.findMonorepoRoot();
   let cli;
   try {
-    cli = parseArgv(process.argv.slice(2));
+    cli = parseArgv(process.argv.slice(2).filter((a) => a !== '--'));
   } catch (error) {
     console.error(`❌ ${error.message}`);
     process.exit(1);
@@ -171,12 +168,12 @@ async function run() {
 
   if (cli.help) {
     console.log(
-      'Использование: npm run remove:app -- <name> [--toolchain nestjs|vite] [--no-install] [--yes]\n\n' +
-        'Удаляет приложение: папку, сервис в docker-compose.yml, опционально — npm install для чистки lockfile.\n' +
+      'Использование: pnpm run remove:app -- <name> [--kind nest|vite] [--no-install] [--yes]\n\n' +
+        'Удаляет приложение: папку, сервис в docker-compose.yml, опционально — pnpm install для чистки lockfile.\n' +
         'Без аргументов — интерактивный выбор из списка существующих приложений.\n\n' +
         'Примеры:\n' +
-        '  npm run remove:app -- api\n' +
-        '  npm run remove:app -- api --toolchain nestjs --yes\n',
+        '  pnpm run remove:app -- api\n' +
+        '  pnpm run remove:app -- api --kind nest --yes\n',
     );
     process.exit(0);
   }
@@ -193,8 +190,11 @@ module.exports = { removeApp };
 
 if (require.main === module) {
   run().catch((err) => {
+    if (err?.name === 'ExitPromptError') {
+      console.log('\nОтменено');
+      process.exit(0);
+    }
     console.error('❌ Ошибка:', err.message);
-    if (rl) rl.close();
     process.exit(1);
   });
 }

@@ -6,7 +6,11 @@ const { generateReactFiles } = require('./react-files');
 const { generateVanillaFiles } = require('./vanilla-files');
 
 /**
- * Vite app under vite-apps/apps/<name>.
+ * Vite app under apps/<name>.
+ * @param {string} appDir
+ * @param {string} name
+ * @param {'react'|'vanilla'} framework
+ * @param {string} [port]
  */
 function createViteApp(appDir, name, framework, port = '5173') {
   const variantFiles =
@@ -19,23 +23,59 @@ function createViteApp(appDir, name, framework, port = '5173') {
     version: '1.0.0',
     private: true,
     type: 'module',
+    monorepo: { kind: 'vite' },
     scripts: {
       dev: 'vite',
       build: 'tsc && vite build',
       preview: 'vite preview',
     },
+    dependencies:
+      framework === 'react'
+        ? {
+            react: 'catalog:vite',
+            'react-dom': 'catalog:vite',
+          }
+        : {},
+    devDependencies: {
+      '@types/node': 'catalog:shared',
+      typescript: 'catalog:shared',
+      vite: 'catalog:vite',
+      ...(framework === 'react'
+        ? {
+            '@types/react': 'catalog:vite',
+            '@types/react-dom': 'catalog:vite',
+            '@vitejs/plugin-react': 'catalog:vite',
+          }
+        : {}),
+    },
   };
 
   fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify(packageJson, null, 2));
 
+  // Инлайн вместо extends из tools/tsconfig.vite.json — чистые статические
+  // compilerOptions, отдельный shared-файл не даёт ничего сверх того, что уже
+  // пишет генератор.
   const tsconfig = {
-    extends: '../../tsconfig.json',
     compilerOptions: {
-      ...(framework === 'vanilla' ? { jsx: 'preserve' } : {}),
+      target: 'ES2020',
+      lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+      module: 'ESNext',
+      moduleResolution: 'bundler',
+      jsx: framework === 'vanilla' ? 'preserve' : 'react-jsx',
+      strict: true,
+      skipLibCheck: true,
+      noEmit: true,
+      isolatedModules: true,
+      moduleDetection: 'force',
+      useDefineForClassFields: true,
+      allowImportingTsExtensions: true,
+      noFallthroughCasesInSwitch: true,
+      esModuleInterop: true,
+      allowSyntheticDefaultImports: true,
+      resolveJsonModule: true,
+      types: ['vite/client', 'node'],
       paths: {
         '@/*': ['./src/*'],
-        '@root-packages/*': ['../../../packages/*'],
-        '@toolchain-packages/*': ['../../packages/*'],
       },
     },
     include: ['src', 'vite.config.ts'],
@@ -105,9 +145,9 @@ PORT=${port}
       '.dockerignore',
     ],
     commands: [
-      `npm run dev -w @apps/${name}`,
-      `npm run build -w @apps/${name}`,
-      `npm run preview -w @apps/${name}`,
+      `pnpm --filter @apps/${name} dev`,
+      `pnpm --filter @apps/${name} build`,
+      `pnpm --filter @apps/${name} preview`,
     ],
     nextSteps: [`Открой http://localhost:${port}`],
     envInfo: [

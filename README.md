@@ -1,23 +1,21 @@
 # Monorepo
 
-Саб-монорепы `nestjs-apps` и `vite-apps` (у каждого свой npm workspaces). Корневой `tools/` — утилиты.
+Единый pnpm workspace: `apps/*` — приложения (Nest или Vite, тип — в `package.json` → `monorepo.kind`), `packages/*` — настоящие workspace-пакеты (`workspace:*`, без build-шага — сырой `src/`, компилирует сам потребитель), `tools/` — утилиты.
 
 ```bash
-# обычно — в том мире, где работаешь
-cd nestjs-apps && npm install
-cd vite-apps && npm install
-npm install                 # root tools
+pnpm install                # один install на весь workspace
 
-# после clone всего репо — ярлык на три независимых install
-npm run deps:install
+pnpm run create:app         # интерактивно
+pnpm run create:app -- --kind nest --name api
+pnpm run create:app -- --kind react --name web
 
-cd nestjs-apps && npm run create:app
-cd vite-apps && npm run create:app
+pnpm run create:package     # интерактивно
+pnpm run create:package -- shared
 ```
 
-Общий код — папки руками: root `packages/` → `@root-packages/<name>`; `*/packages/` → `@toolchain-packages/<name>`.
+Общий код — `packages/<name>`, импорт как `@packages/<name>` (в `dependencies` app'а — `"@packages/<name>": "workspace:*"`). Версии зависимостей — через pnpm catalogs (`pnpm-workspace.yaml`), не дублируются в каждом `package.json`.
 
 ```bash
-cd nestjs-apps && npm run dev -w @apps/<app>
-cd vite-apps && npm run build -w @apps/<app>
+pnpm --filter @apps/<name> dev
+pnpm --filter @apps/<name> build
 ```

@@ -2,29 +2,29 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { execSync } = require('child_process');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-function question(query) {
-  return new Promise((resolve) => rl.question(query, resolve));
+/**
+ * `@inquirer/prompts` — ESM-only с v8 (проверено — `require()` из этого
+ * CommonJS-файла упал бы с ERR_REQUIRE_ESM), поэтому грузится через
+ * динамический `import()` — стандартный мост ESM→CJS в Node.
+ * @returns {Promise<{ checkbox: Function, input: Function }>}
+ */
+function loadPrompts() {
+  return import('@inquirer/prompts');
 }
 
 function printHelp() {
-  console.log(`Использование: npm run kill:port -- [порт...]
+  console.log(`Использование: pnpm run kill:port -- [порт...]
 
 Завершает процессы, слушающие указанные TCP-порты (Windows, Linux, macOS).
 
-Без аргументов — интерактивный режим (порты из nestjs-apps/apps и vite-apps/apps).
+Без аргументов — интерактивный режим (порты из apps/*).
 
 Примеры:
-  npm run kill:port
-  npm run kill:port -- 3000
-  npm run kill:port -- 3000 5173
+  pnpm run kill:port
+  pnpm run kill:port -- 3000
+  pnpm run kill:port -- 3000 5173
 `);
 }
 
@@ -132,12 +132,6 @@ function getPidsOnPort(port) {
   return process.platform === 'win32' ? getPidsWindows(port) : getPidsUnix(port);
 }
 
-function formatPortStatus(port) {
-  const pids = getPidsOnPort(port);
-  if (pids.length === 0) return 'свободен';
-  return `занят (PID ${pids.join(', ')})`;
-}
-
 function killPid(pid) {
   if (process.platform === 'win32') {
     execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
@@ -169,82 +163,58 @@ function killPort(port) {
   return killed > 0 ? 0 : 1;
 }
 
-function defaultInteractivePorts(appPorts) {
-  const occupied = appPorts.find((item) => getPidsOnPort(item.port).length > 0);
-  if (occupied) return [occupied.port];
-  if (appPorts.length > 0) return [appPorts[0].port];
-  return [3000];
-}
-
-function portsFromSelection(input, appPorts) {
-  const trimmed = input.trim();
-  if (!trimmed) return defaultInteractivePorts(appPorts);
-
-  const parts = trimmed.split(/[\s,]+/).filter(Boolean);
-  const ports = [];
-
-  for (const part of parts) {
-    if (part === '0') return null;
-
-    const index = Number(part);
-    if (Number.isInteger(index) && index >= 1 && index <= appPorts.length) {
-      ports.push(appPorts[index - 1].port);
-      continue;
-    }
-
-    if (isValidPort(part)) {
-      ports.push(Number(part));
-      continue;
-    }
-
-    console.error(`❌ Некорректный выбор: ${part}`);
-    process.exit(1);
-  }
-
-  return [...new Set(ports)];
-}
-
-async function askManualPorts() {
-  const answer = await question('Порт (несколько через пробел): ');
-  const parts = answer.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return [];
-  return parsePorts(parts);
-}
-
+/**
+ * Порты из apps/* — checkbox, ничего не предвыбрано (явный выбор). Плюс
+ * отдельный input для портов вне списка apps/* — заменяет старый "0) ввести
+ * вручную", можно комбинировать с выбором из списка.
+ * @returns {Promise<number[]>}
+ */
 async function interactivePorts() {
+  const { checkbox, input } = await loadPrompts();
+
   console.log('\n🔪 Освободить порт\n');
 
   const appPorts = discoverAppPorts();
 
   if (appPorts.length > 0) {
-    console.log('Приложения:');
-    appPorts.forEach((item, index) => {
-      console.log(
-        `  ${index + 1}) ${item.app} — ${item.port} [${formatPortStatus(item.port)}]`,
-      );
+    const selected = await checkbox({
+      message: 'Выберите порты для освобождения',
+      choices: appPorts.map((item) => {
+        const pids = getPidsOnPort(item.port);
+        const status = pids.length === 0 ? 'свободен' : `занят (PID ${pids.join(', ')})`;
+        return {
+          name: `${item.app} — ${item.port} [${status}]`,
+          value: item.port,
+        };
+      }),
+      // Дефолт склеивает декорированный name (со статусом в скобках) —
+      // после подтверждения нужны только сами порты.
+      theme: {
+        style: {
+          renderSelectedChoices: (chosen) => chosen.map((c) => c.value).join(', '),
+        },
+      },
     });
-    console.log('  0) Ввести порт вручную\n');
 
-    const answer = await question(
-      'Выбор (номер, несколько через запятую, Enter — первый занятый): ',
-    );
-    const selected = portsFromSelection(answer, appPorts);
+    const manual = await input({
+      message: 'Ещё порты вручную, через пробел (Enter — пропустить)',
+      default: '',
+    });
+    const manualPorts = manual.trim() ? parsePorts(manual.trim().split(/\s+/)) : [];
 
-    if (selected === null) return askManualPorts();
-    return selected;
+    return [...new Set([...selected, ...manualPorts])];
   }
 
-  const answer = await question('Порт [3000]: ');
-  const value = answer.trim() || '3000';
-  if (!isValidPort(value)) {
+  const value = await input({ message: 'Порт', default: '3000' });
+  if (!isValidPort(value.trim())) {
     console.error(`❌ Некорректный порт: ${value}`);
     process.exit(1);
   }
-  return [Number(value)];
+  return [Number(value.trim())];
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
+  const argv = process.argv.slice(2).filter((a) => a !== '--');
 
   if (argv.includes('-h') || argv.includes('--help')) {
     printHelp();
@@ -252,7 +222,6 @@ async function main() {
   }
 
   const ports = argv.length > 0 ? parsePorts(argv) : await interactivePorts();
-  rl.close();
 
   if (ports.length === 0) {
     console.log('Отменено.');
@@ -269,7 +238,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  rl.close();
+  if (err?.name === 'ExitPromptError') {
+    console.log('\nОтменено');
+    process.exit(0);
+  }
   console.error('❌ Ошибка:', err.message);
   process.exit(1);
 });

@@ -3,50 +3,24 @@
 const fs = require('fs');
 const path = require('path');
 
-/** @typedef {'nestjs' | 'vite'} ToolchainId */
+/** @typedef {'nest' | 'vite'} AppKind */
+
+const APPS_REL = 'apps';
+const PACKAGES_REL = 'packages';
 
 /**
- * Саб-монорепы: id → каталоги от корня git-репо.
- * packages/ — свободные папки (не npm workspace):
- *   root packages/ — isomorphic; toolchain packages/ — только тулчейн.
- */
-const ROOT_PACKAGES_REL = 'packages';
-
-const TOOLCHAINS = /** @type {const} */ ({
-  nestjs: {
-    root: 'nestjs-apps',
-    appsRel: 'nestjs-apps/apps',
-    packagesRel: 'nestjs-apps/packages',
-  },
-  vite: {
-    root: 'vite-apps',
-    appsRel: 'vite-apps/apps',
-    packagesRel: 'vite-apps/packages',
-  },
-});
-
-/** @type {ToolchainId[]} */
-const TOOLCHAIN_IDS = Object.keys(TOOLCHAINS);
-
-/**
- * Корень репо (есть nestjs-apps/, vite-apps/, tools/).
+ * Корень репо (есть apps/, tools/).
  * @param {string} [startDir]
  */
 function findMonorepoRoot(startDir = process.cwd()) {
   let dir = path.resolve(startDir);
   for (;;) {
-    if (
-      fs.existsSync(path.join(dir, 'nestjs-apps')) &&
-      fs.existsSync(path.join(dir, 'vite-apps')) &&
-      fs.existsSync(path.join(dir, 'tools'))
-    ) {
+    if (fs.existsSync(path.join(dir, APPS_REL)) && fs.existsSync(path.join(dir, 'tools'))) {
       return dir;
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
-      throw new Error(
-        `Корень монорепо не найден от ${startDir} (ожидаются nestjs-apps/, vite-apps/, tools/)`,
-      );
+      throw new Error(`Корень монорепо не найден от ${startDir} (ожидаются apps/, tools/)`);
     }
     dir = parent;
   }
@@ -58,28 +32,12 @@ function resolveRoot(cwd) {
 }
 
 /**
- * @param {ToolchainId} id
- */
-function toolchain(id) {
-  const t = TOOLCHAINS[id];
-  if (!t) throw new Error(`Неизвестный тулчейн: ${id}`);
-  return t;
-}
-
-/**
- * Гарантирует root packages/ + apps/packages в обоих тулчейнах (+ .gitkeep если пусто).
+ * Гарантирует apps/ + packages/ (+ .gitkeep если пусто).
  * @param {string} [cwd]
  */
 function ensureLayoutDirs(cwd) {
   const root = resolveRoot(cwd);
-  const dirs = [
-    ROOT_PACKAGES_REL,
-    ...TOOLCHAIN_IDS.flatMap((id) => {
-      const t = TOOLCHAINS[id];
-      return [t.appsRel, t.packagesRel];
-    }),
-  ];
-  for (const rel of dirs) {
+  for (const rel of [APPS_REL, PACKAGES_REL]) {
     const abs = path.join(root, rel);
     fs.mkdirSync(abs, { recursive: true });
     const keep = path.join(abs, '.gitkeep');
@@ -91,77 +49,76 @@ function ensureLayoutDirs(cwd) {
 }
 
 /**
- * @param {ToolchainId} id
- * @param {string} name
- * @param {string} [cwd]
- * @returns {{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }}
+ * Тип app'а — из package.json → monorepo.kind (не из расположения папки).
+ * @param {string} absDir
+ * @returns {AppKind | null}
  */
-function resolveApp(id, name, cwd) {
-  const root = resolveRoot(cwd);
-  const t = toolchain(id);
-  return {
-    toolchain: id,
-    name,
-    absDir: path.join(root, t.appsRel, name),
-    relPosix: `${t.appsRel}/${name}`.replace(/\\/g, '/'),
-  };
+function readAppKind(absDir) {
+  const pkgPath = path.join(absDir, 'package.json');
+  if (!fs.existsSync(pkgPath)) return null;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    return pkg.monorepo?.kind || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * @param {string} [cwd]
- * @returns {Array<{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }>}
+ * @returns {Array<{ kind: AppKind, name: string, absDir: string, relPosix: string }>}
  */
 function listApps(cwd) {
   const root = resolveRoot(cwd);
-  /** @type {Array<{ toolchain: ToolchainId, name: string, absDir: string, relPosix: string }>} */
+  const appsPath = path.join(root, APPS_REL);
+  /** @type {Array<{ kind: AppKind, name: string, absDir: string, relPosix: string }>} */
   const out = [];
-  for (const id of TOOLCHAIN_IDS) {
-    const appsPath = path.join(root, toolchain(id).appsRel);
-    if (!fs.existsSync(appsPath)) continue;
-    for (const entry of fs.readdirSync(appsPath, { withFileTypes: true })) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-      out.push(resolveApp(id, entry.name, root));
-    }
+  if (!fs.existsSync(appsPath)) return out;
+  for (const entry of fs.readdirSync(appsPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const absDir = path.join(appsPath, entry.name);
+    const kind = readAppKind(absDir);
+    if (!kind) continue;
+    out.push({ kind, name: entry.name, absDir, relPosix: `${APPS_REL}/${entry.name}` });
   }
   return out;
 }
 
 /**
- * Имя сервиса / container в docker-compose: nestjs-api, vite-web, …
- * @param {ToolchainId} id
+ * Имя сервиса / container в docker-compose: nest-api, vite-web, …
+ * @param {AppKind} kind
  * @param {string} name
  */
-function composeServiceName(id, name) {
-  return `${id}-${name}`;
+function composeServiceName(kind, name) {
+  return `${kind}-${name}`;
 }
 
 /**
- * Найти app по folder-name. При нескольких совпадениях — ошибка (нужен toolchain).
+ * Найти app по folder-name. При нескольких совпадениях — ошибка (нужен kind).
  * @param {string} name
  * @param {string} [cwd]
- * @param {ToolchainId} [id]
+ * @param {AppKind} [kind]
  */
-function findAppByName(name, cwd, id) {
+function findAppByName(name, cwd, kind) {
   const matches = listApps(cwd).filter(
-    (a) => a.name === name && (id == null || a.toolchain === id),
+    (a) => a.name === name && (kind == null || a.kind === kind),
   );
   if (matches.length === 0) return null;
   if (matches.length > 1) {
     throw new Error(
-      `Несколько apps с именем "${name}" (${matches.map((m) => m.toolchain).join(', ')}). Укажи тулчейн.`,
+      `Несколько apps с именем "${name}" (${matches.map((m) => m.kind).join(', ')}). Укажи kind.`,
     );
   }
   return matches[0];
 }
 
 /**
- * @param {ToolchainId} id
  * @param {string} frameworkName
  * @param {string} [cwd]
  */
-function getDefaultAppName(id, frameworkName, cwd) {
+function getDefaultAppName(frameworkName, cwd) {
   const root = resolveRoot(cwd);
-  const appsPath = path.join(root, toolchain(id).appsRel);
+  const appsPath = path.join(root, APPS_REL);
   if (!fs.existsSync(appsPath) || !fs.existsSync(path.join(appsPath, frameworkName))) {
     return frameworkName;
   }
@@ -173,6 +130,24 @@ function getDefaultAppName(id, frameworkName, cwd) {
     appName = `${frameworkName}-${counter}`;
   }
   return appName;
+}
+
+/**
+ * @param {string} [cwd]
+ * @returns {Array<{ name: string, absDir: string, relPosix: string }>}
+ */
+function listPackages(cwd) {
+  const root = resolveRoot(cwd);
+  const packagesPath = path.join(root, PACKAGES_REL);
+  const out = [];
+  if (!fs.existsSync(packagesPath)) return out;
+  for (const entry of fs.readdirSync(packagesPath, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const absDir = path.join(packagesPath, entry.name);
+    if (!fs.existsSync(path.join(absDir, 'package.json'))) continue;
+    out.push({ name: entry.name, absDir, relPosix: `${PACKAGES_REL}/${entry.name}` });
+  }
+  return out;
 }
 
 /**
@@ -206,12 +181,12 @@ function getUsedPorts(cwd) {
 }
 
 module.exports = {
-  TOOLCHAINS,
-  ROOT_PACKAGES_REL,
+  APPS_REL,
+  PACKAGES_REL,
   findMonorepoRoot,
   ensureLayoutDirs,
-  resolveApp,
   listApps,
+  listPackages,
   composeServiceName,
   findAppByName,
   getDefaultAppName,

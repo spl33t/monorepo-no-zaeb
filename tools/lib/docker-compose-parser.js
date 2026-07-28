@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-
 const fs = require('fs');
-const path = require('path');
 const yaml = require('yaml');
 
 /**
@@ -16,7 +13,9 @@ function parseDockerCompose(composePath) {
 
   const content = fs.readFileSync(composePath, 'utf8');
   try {
-    const parsed = yaml.parse(content);
+    // Пустой/только-комментарии файл — yaml.parse даёт null, не {} (проверено
+    // живьём) — без guard'а следующая строка падает на null.services.
+    const parsed = yaml.parse(content) || {};
     return {
       services: parsed.services || {},
       networks: parsed.networks || {},
@@ -28,25 +27,26 @@ function parseDockerCompose(composePath) {
 }
 
 /**
- * Преобразует JavaScript объект обратно в YAML строку
+ * Преобразует JavaScript объект обратно в YAML строку. `services` — ВСЕГДА
+ * в выводе, даже пустой ({}): `docker compose` считает файл без ключа
+ * `services` (голый `{}`) невалидным — "empty compose file" (проверено
+ * живьём) — а `services: {}` он ест нормально. Раньше `services` условно
+ * пропускался при отсутствии сервисов — после удаления последнего app'а
+ * файл превращался в `{}` и ломал вообще все `docker compose`-команды.
  * @param {Object} obj - Объект с services, networks, volumes
  * @returns {string} YAML строка
  */
 function stringifyDockerCompose(obj) {
-  const yamlObj = {};
-  
-  if (Object.keys(obj.services || {}).length > 0) {
-    yamlObj.services = obj.services;
-  }
-  
+  const yamlObj = { services: obj.services || {} };
+
   if (Object.keys(obj.networks || {}).length > 0) {
     yamlObj.networks = obj.networks;
   }
-  
+
   if (Object.keys(obj.volumes || {}).length > 0) {
     yamlObj.volumes = obj.volumes;
   }
-  
+
   return yaml.stringify(yamlObj, {
     indent: 2,
     lineWidth: 0,
@@ -54,12 +54,5 @@ function stringifyDockerCompose(obj) {
   });
 }
 
-// Если скрипт запущен напрямую, экспортируем функции
-if (require.main === module) {
-  const composePath = process.argv[2] || path.join(process.cwd(), 'docker-compose.yml');
-  const result = parseDockerCompose(composePath);
-  console.log(JSON.stringify(result, null, 2));
-} else {
-  module.exports = { parseDockerCompose, stringifyDockerCompose };
-}
+module.exports = { parseDockerCompose, stringifyDockerCompose };
 

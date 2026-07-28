@@ -2,20 +2,29 @@
 
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 const { execSync } = require('child_process');
 const layout = require('./monorepo-layout');
 
 /**
+ * `@inquirer/prompts` — ESM-only с v8, грузится через динамический `import()`
+ * — стандартный мост ESM→CJS в Node, без перевода файла в ESM.
+ * @returns {Promise<{ select: Function, input: Function, confirm: Function }>}
+ */
+function loadPrompts() {
+  return import('@inquirer/prompts');
+}
+
+/**
  * @typedef {object} FrameworkOption
- * @property {string} key
- * @property {string} name
+ * @property {string} key            CLI --kind value, e.g. 'nest' | 'react' | 'vanilla'
+ * @property {string} name           display name (interactive menu)
+ * @property {string} defaultPort
  *
  * @typedef {object} GenerateContext
  * @property {string} appDir
  * @property {string} name
  * @property {string} port
- * @property {string} [kind]
+ * @property {string} key            выбранный FrameworkOption.key
  *
  * @typedef {object} GenerateResult
  * @property {string[]} structure
@@ -24,21 +33,12 @@ const layout = require('./monorepo-layout');
  * @property {string[]} [envInfo]
  *
  * @typedef {object} CreateAppShellConfig
- * @property {'nestjs'|'vite'} world
- * @property {string} toolchainRoot absolute path to nestjs-apps | vite-apps
- * @property {string} [monorepoRoot]
- * @property {string} defaultPort
+ * @property {string} monorepoRoot absolute path to repo root
  * @property {string} title interactive banner
  * @property {string} helpText
- * @property {string} [defaultKind] when frameworks list exists
- * @property {FrameworkOption[]} [frameworks]
- * @property {Record<string, string>} [kindAliases]
+ * @property {FrameworkOption[]} frameworks
  * @property {(ctx: GenerateContext) => GenerateResult} generate
  */
-
-function resolveMonorepoRoot(toolchainRoot) {
-  return layout.findMonorepoRoot(toolchainRoot);
-}
 
 function parseCliArgs(argv, extraFlags = []) {
   const out = {
@@ -108,27 +108,26 @@ function validatePort(port) {
 
 /**
  * @param {CreateAppShellConfig} config
- * @param {string|null} kind
+ * @param {FrameworkOption} framework
  * @param {string} name
  * @param {string} port
  */
-async function scaffold(config, kind, name, port) {
-  const { world, toolchainRoot, monorepoRoot, generate } = config;
-  const rel = `${path.basename(toolchainRoot)}/apps/${name}`;
-  const targetDir = path.join(toolchainRoot, 'apps', name);
+async function scaffold(config, framework, name, port) {
+  const { monorepoRoot, generate } = config;
+  const rel = `apps/${name}`;
+  const targetDir = path.join(monorepoRoot, 'apps', name);
 
   layout.ensureLayoutDirs(monorepoRoot);
 
   if (fs.existsSync(targetDir)) {
-    console.error(`❌ Приложение "${name}" уже существует в ${path.basename(toolchainRoot)}`);
+    console.error(`❌ Приложение "${name}" уже существует`);
     process.exit(1);
   }
 
-  const label = kind ? `${kind} ` : '';
-  console.log(`\n📦 Создаю ${label}"${name}" → ${rel} (порт ${port})...\n`);
+  console.log(`\n📦 Создаю ${framework.name} "${name}" → ${rel} (порт ${port})...\n`);
   fs.mkdirSync(path.join(targetDir, 'src'), { recursive: true });
 
-  const result = generate({ appDir: targetDir, name, port, kind: kind || undefined });
+  const result = generate({ appDir: targetDir, name, port, key: framework.key });
 
   console.log('✅ Структура:');
   console.log(`   ${rel}/`);
@@ -143,59 +142,56 @@ async function scaffold(config, kind, name, port) {
   console.log('\n🐳 docker-compose.yml...');
   try {
     const { addAppToDockerCompose } = require('../cli/create-docker-compose.js');
-    await addAppToDockerCompose(name, world, monorepoRoot);
+    await addAppToDockerCompose(name, monorepoRoot);
   } catch (error) {
     console.warn(`⚠️  docker-compose: ${error.message}`);
-    console.log('   Вручную: npm run docker:create-compose');
+    console.log('   Вручную: pnpm run docker:create-compose');
   }
 }
 
-async function maybeInstall(toolchainRoot, shouldInstall) {
-  const label = path.basename(toolchainRoot);
+async function maybeInstall(monorepoRoot, shouldInstall) {
   if (!shouldInstall) {
-    console.log(`\n⏭️  Пропущена установка. Вручную: npm install (в ${label}/)`);
+    console.log('\n⏭️  Пропущена установка. Вручную: pnpm install');
     return;
   }
-  console.log(`\n📦 npm install (${label})...`);
+  console.log('\n📦 pnpm install...');
   try {
-    execSync('npm install', { stdio: 'inherit', cwd: toolchainRoot });
+    execSync('pnpm install', { stdio: 'inherit', cwd: monorepoRoot });
     console.log('\n✅ Готово');
   } catch {
-    console.warn(`\n⚠️  Установите вручную: npm install (в ${label}/)`);
+    console.warn('\n⚠️  Установите вручную: pnpm install');
   }
 }
 
-function resolveKind(config, cli) {
-  const { frameworks, kindAliases = {}, defaultKind } = config;
-  if (!frameworks?.length) return null;
-
-  const raw = cli.kind || cli.variant;
-  if (!raw) return defaultKind || frameworks[0].key;
-
-  const fw = kindAliases[raw] || raw;
-  if (!frameworks.some((f) => f.key === fw)) {
-    console.error(`❌ kind/variant: ${frameworks.map((f) => f.key).join(' | ')}`);
+/**
+ * @param {CreateAppShellConfig} config
+ * @param {{ kind?: string }} cli
+ * @returns {FrameworkOption}
+ */
+function resolveFramework(config, cli) {
+  const { frameworks } = config;
+  const key = cli.kind;
+  if (!key) {
+    if (frameworks.length === 1) return frameworks[0];
+    console.error(`❌ Укажи --kind (${frameworks.map((f) => f.key).join(' | ')})`);
     process.exit(1);
   }
-  return fw;
+
+  const framework = frameworks.find((f) => f.key === key);
+  if (!framework) {
+    console.error(`❌ --kind: ${frameworks.map((f) => f.key).join(' | ')}`);
+    process.exit(1);
+  }
+  return framework;
 }
 
 /**
  * @param {CreateAppShellConfig} config
  */
 async function runCreateApp(config) {
-  const toolchainRoot = path.resolve(config.toolchainRoot);
-  const monorepoRoot = config.monorepoRoot
-    ? path.resolve(config.monorepoRoot)
-    : resolveMonorepoRoot(toolchainRoot);
-
-  const full = {
-    ...config,
-    toolchainRoot,
-    monorepoRoot,
-  };
-
-  const extraFlags = full.frameworks?.length ? ['kind', 'variant'] : [];
+  const monorepoRoot = path.resolve(config.monorepoRoot);
+  const full = { ...config, monorepoRoot };
+  const extraFlags = ['kind'];
 
   let cli;
   try {
@@ -211,27 +207,22 @@ async function runCreateApp(config) {
     process.exit(0);
   }
 
-  const hasFlags =
-    cli.name ||
-    cli.port ||
-    cli.noInstall ||
-    (extraFlags.length > 0 && (cli.kind || cli.variant));
+  const hasFlags = cli.name || cli.port || cli.noInstall || cli.kind;
 
   if (hasFlags) {
-    const kind = resolveKind(full, cli);
-    const nameBase = kind || full.world;
-    const name = cli.name || layout.getDefaultAppName(full.world, nameBase, monorepoRoot);
+    const framework = resolveFramework(full, cli);
+    const name = cli.name || layout.getDefaultAppName(framework.key, monorepoRoot);
     if (!validateName(name)) {
       console.error('❌ --name: a-z, 0-9, -');
       process.exit(1);
     }
-    const port = cli.port || getAvailablePort(monorepoRoot, full.defaultPort);
+    const port = cli.port || getAvailablePort(monorepoRoot, framework.defaultPort);
     if (!validatePort(port)) {
       console.error('❌ --port 1–65535');
       process.exit(1);
     }
-    await scaffold(full, kind, name, port);
-    await maybeInstall(toolchainRoot, !cli.noInstall);
+    await scaffold(full, framework, name, port);
+    await maybeInstall(monorepoRoot, !cli.noInstall);
     return;
   }
 
@@ -245,48 +236,35 @@ async function runCreateApp(config) {
 }
 
 /**
- * @param {CreateAppShellConfig & { toolchainRoot: string, monorepoRoot: string }} config
+ * @param {CreateAppShellConfig & { monorepoRoot: string }} config
  */
 async function interactive(config) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const question = (q) => new Promise((resolve) => rl.question(q, resolve));
+  const { select, input, confirm } = await loadPrompts();
 
   console.log(`\n🚀 ${config.title}\n`);
 
-  let kind = null;
-  if (config.frameworks?.length) {
-    config.frameworks.forEach((f, i) => console.log(`  ${i + 1}. ${f.name}`));
-    const fwChoice = (await question('\nНомер [1]: ')) || '1';
-    const fwIndex = parseInt(fwChoice, 10) - 1;
-    if (fwIndex < 0 || fwIndex >= config.frameworks.length) {
-      console.error('❌ Неверный выбор');
-      rl.close();
-      process.exit(1);
-    }
-    kind = config.frameworks[fwIndex].key;
-  }
+  const framework = await select({
+    message: 'Framework',
+    choices: config.frameworks.map((f) => ({ name: f.name, value: f })),
+  });
 
-  const nameBase = kind || config.world;
-  const defaultName = layout.getDefaultAppName(config.world, nameBase, config.monorepoRoot);
-  const name = ((await question(`Название [${defaultName}]: `)) || defaultName).trim();
-  if (!validateName(name)) {
-    console.error('❌ Название: только a-z, 0-9, -');
-    rl.close();
-    process.exit(1);
-  }
+  const defaultName = layout.getDefaultAppName(framework.key, config.monorepoRoot);
+  const name = await input({
+    message: 'Название',
+    default: defaultName,
+    validate: (value) => validateName(value.trim()) || 'Только a-z, 0-9, -',
+  });
 
-  const defaultPort = getAvailablePort(config.monorepoRoot, config.defaultPort);
-  const port = (await question(`Порт [${defaultPort}]: `)) || defaultPort;
-  if (!validatePort(port)) {
-    console.error('❌ Порт 1–65535');
-    rl.close();
-    process.exit(1);
-  }
+  const defaultPort = getAvailablePort(config.monorepoRoot, framework.defaultPort);
+  const port = await input({
+    message: 'Порт',
+    default: defaultPort,
+    validate: (value) => validatePort(value.trim()) || 'Порт 1–65535',
+  });
 
-  await scaffold(config, kind, name, port);
-  const install = (await question('Установить зависимости? (y/n) [y]: ')) || 'y';
-  rl.close();
-  await maybeInstall(config.toolchainRoot, /^y(es)?$/i.test(install.trim()));
+  await scaffold(config, framework, name.trim(), port.trim());
+  const shouldInstall = await confirm({ message: 'Установить зависимости?', default: true });
+  await maybeInstall(config.monorepoRoot, shouldInstall);
 }
 
 module.exports = {

@@ -7,92 +7,188 @@ const { spawn, execSync } = require('child_process');
 const { parseDockerCompose } = require('../lib/docker-compose-parser');
 const { findMonorepoRoot } = require('../lib/monorepo-layout');
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-function question(query) {
-  return new Promise(resolve => rl.question(query, resolve));
+/**
+ * Простой спиннер на `readline.cursorTo`/`clearLine` (статичные функции
+ * модуля, не `readline.createInterface` — не создают listener на stdin,
+ * поэтому не конфликтуют с @inquirer/prompts, который управляет stdin сам).
+ * @param {string} text
+ * @returns {() => void} остановить и стереть строку
+ */
+function startSpinner(text) {
+  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let i = 0;
+  process.stdout.write(`${frames[0]} ${text}`);
+  const timer = setInterval(() => {
+    i = (i + 1) % frames.length;
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(`${frames[i]} ${text}`);
+  }, 80);
+  return () => {
+    clearInterval(timer);
+    readline.cursorTo(process.stdout, 0);
+    readline.clearLine(process.stdout, 0);
+  };
 }
 
 /**
- * Получает статус контейнеров через docker compose ps
- * @param {string[]} serviceNames
- * @param {string} monorepoRoot
+ * `@inquirer/prompts` — ESM-only с v8 (проверено — `require()` из этого
+ * CommonJS-файла упал бы с ERR_REQUIRE_ESM), поэтому грузится через
+ * динамический `import()` — стандартный мост ESM→CJS в Node, не требует
+ * переводить весь файл/tools/ в ESM.
+ * @returns {Promise<{ checkbox: Function, select: Function }>}
  */
-function getContainerStatuses(serviceNames, monorepoRoot) {
-  const statusMap = {};
+function loadPrompts() {
+  return import('@inquirer/prompts');
+}
 
+/**
+ * Статус контейнеров через `docker compose ps --format json` — Service/State
+ * (реальные поля этого формата, проверено живьём на Docker Compose v5.3.1).
+ * @param {string} monorepoRoot
+ * @returns {Record<string, string>} serviceName -> state ('running', 'exited', ...)
+ */
+function getContainerStatuses(monorepoRoot) {
+  const statusMap = {};
   try {
-    // Получаем статус контейнеров в JSON формате
     const output = execSync('docker compose ps --format json', {
       encoding: 'utf8',
       cwd: monorepoRoot,
       stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
+      timeout: 5000,
     });
-
-    // Парсим JSON строки (каждая строка - отдельный JSON объект)
-    const lines = output.trim().split('\n').filter(line => line.trim());
-
-    lines.forEach(line => {
-      try {
-        const container = JSON.parse(line);
-        // Пробуем разные поля для имени сервиса
-        const serviceName = container.Service || container.service || container.Name || container.name;
-        const state = container.State || container.state || container.Status || container.status;
-
-        if (serviceName && state) {
-          statusMap[serviceName] = state;
-        }
-      } catch (e) {
-        // Игнорируем ошибки парсинга отдельных строк
-      }
-    });
-  } catch (error) {
-    // Если команда не выполнилась (например, контейнеры не запущены), возвращаем пустой объект
-    // Это нормально, значит все сервисы остановлены
+    for (const line of output.trim().split('\n')) {
+      if (!line.trim()) continue;
+      const container = JSON.parse(line);
+      statusMap[container.Service] = container.State;
+    }
+  } catch {
+    // docker compose ps падает, если демон недоступен или ничего не поднято —
+    // в обоих случаях корректно считать все сервисы остановленными.
   }
+  return statusMap;
+}
 
-  // Также проверяем через docker ps для более точного сопоставления
+/**
+ * Per-service build-инфо (context/dockerfile) через `docker compose config
+ * --format json` — не ручной путь apps/<name>/Dockerfile, чтобы не
+ * дублировать то, что уже разрешено в docker-compose.yml.
+ * @param {string} monorepoRoot
+ * @returns {Record<string, { context: string, dockerfile: string }>}
+ */
+function getComposeBuilds(monorepoRoot) {
   try {
-    const psOutput = execSync('docker ps -a --format "{{.Names}}\t{{.Status}}"', {
+    const output = execSync('docker compose config --format json', {
       encoding: 'utf8',
       cwd: monorepoRoot,
       stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
+      timeout: 5000,
     });
+    const data = JSON.parse(output);
+    const builds = {};
+    for (const [name, svc] of Object.entries(data.services || {})) {
+      if (svc.build) builds[name] = svc.build;
+    }
+    return builds;
+  } catch {
+    return {};
+  }
+}
 
-    const psLines = psOutput.trim().split('\n').filter(line => line.trim());
-
-    psLines.forEach(line => {
-      const [containerName, ...statusParts] = line.split('\t');
-      const status = statusParts.join(' ');
-
-      // Сопоставляем имя контейнера с именем сервиса
-      // В docker-compose имя контейнера обычно совпадает с именем сервиса
-      // или имеет формат: <project>_<service>_<number>
-      serviceNames.forEach(serviceName => {
-        if (containerName === serviceName ||
-            containerName.startsWith(serviceName + '_') ||
-            containerName.endsWith('_' + serviceName)) {
-          // Извлекаем состояние из статуса (например, "Up 5 minutes" -> "running")
-          if (status.toLowerCase().includes('up')) {
-            statusMap[serviceName] = 'running';
-          } else if (status.toLowerCase().includes('exited')) {
-            statusMap[serviceName] = 'exited';
-          } else if (!statusMap[serviceName]) {
-            statusMap[serviceName] = status;
-          }
-        }
-      });
-    });
-  } catch (error) {
-    // Игнорируем ошибки
+/**
+ * Разбирает `--progress=rawjson` (пишется в stderr `docker build`, проверено
+ * живьём) и определяет, был ли ПОЛНОСТЬЮ закэширован последний шаг стадии
+ * stageName (по имени вида "[stageName N/N]"). У каждого vertex BuildKit в
+ * cache-key входят digest'ы предыдущих шагов — если изменилось любое
+ * upstream-COPY (исходники app'а ИЛИ отфильтрованные resolver'ом packages/*),
+ * последний шаг стадии тоже перестаёт быть cached, поэтому проверять каждый
+ * COPY по отдельности не нужно (проверено живьём).
+ * @param {string} rawjson
+ * @param {string} stageName
+ * @returns {boolean|null} true — стадия полностью из кэша (ничего не менялось),
+ *   false — что-то изменилось, null — не удалось разобрать вывод
+ */
+function isStageFullyCached(rawjson, stageName) {
+  const vertices = new Map();
+  for (const line of rawjson.split('\n')) {
+    if (!line.trim()) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    for (const v of event.vertexes || []) {
+      if (!v.digest || !v.name) continue;
+      vertices.set(v.digest, { ...(vertices.get(v.digest) || {}), ...v });
+    }
   }
 
-  return statusMap;
+  const stepRe = new RegExp(`^\\[${stageName} (\\d+)/(\\d+)\\]`);
+  let lastStep = null;
+  for (const v of vertices.values()) {
+    const m = v.name.match(stepRe);
+    if (!m) continue;
+    if (m[1] === m[2]) lastStep = v;
+  }
+
+  if (!lastStep) return null;
+  return Boolean(lastStep.cached);
+}
+
+/**
+ * Актуальность сервиса — реальный `docker build --target freshness
+ * --progress=rawjson`, БЕЗ тега (без `-t`) — канонический `<project>-<service>`
+ * тег не трогается вообще, даже случайно. Стадия `freshness` (генераторы
+ * tools/generators/nest|vite/dockerfile.js) останавливается сразу после COPY
+ * исходников app'а и отфильтрованных resolver'ом packages/*, ДО дорогого
+ * `pnpm install`/`build` — проверка дешёвая (доли секунды при полном кэше).
+ * @param {string} monorepoRoot
+ * @param {{ context: string, dockerfile: string }} [build]
+ * @returns {Promise<{ ok: boolean, changed: boolean|null }>}
+ */
+function checkServiceFreshness(monorepoRoot, build) {
+  if (!build) return Promise.resolve({ ok: false, changed: null });
+
+  return new Promise((resolve) => {
+    const args = [
+      'build', '--target', 'freshness',
+      '-f', build.dockerfile, '--progress=rawjson', build.context,
+    ];
+    const child = spawn('docker', args, { cwd: monorepoRoot });
+
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', () => resolve({ ok: false, changed: null }));
+    child.on('exit', (code) => {
+      if (code !== 0) return resolve({ ok: false, changed: null });
+      const cached = isStageFullyCached(stderr, 'freshness');
+      resolve({ ok: true, changed: cached === null ? null : !cached });
+    });
+  });
+}
+
+/**
+ * @param {string} monorepoRoot
+ * @param {Record<string, { context: string, dockerfile: string }>} builds
+ * @returns {Promise<Record<string, { ok: boolean, changed: boolean|null }>>}
+ */
+async function checkAllFreshness(monorepoRoot, builds) {
+  const names = Object.keys(builds);
+  const results = await Promise.all(names.map((name) => checkServiceFreshness(monorepoRoot, builds[name])));
+  const map = {};
+  names.forEach((name, i) => { map[name] = results[i]; });
+  return map;
+}
+
+/**
+ * @param {{ ok: boolean, changed: boolean|null }|undefined} result
+ *   undefined — проверка не запускалась (сервис без build-секции, или check пропущен)
+ */
+function formatFreshness(result) {
+  if (!result) return '—';
+  if (!result.ok) return '✗ ошибка проверки';
+  if (result.changed === null) return '? не определено';
+  return result.changed ? '⟳ есть изменения' : '✓ актуален';
 }
 
 /**
@@ -149,54 +245,6 @@ function getServicePorts(serviceConfig) {
 }
 
 /**
- * Выводит таблицу сервисов
- */
-function displayServicesTable(services, statuses = {}) {
-  const serviceNames = Object.keys(services);
-
-  if (serviceNames.length === 0) {
-    console.log('❌ Сервисы не найдены в docker-compose.yml');
-    return;
-  }
-
-  console.log('\n📋 Доступные сервисы:\n');
-  console.log('┌─────┬─────────────────────────────────────┬──────────────────┬──────────────┐');
-  console.log('│ №   │ Название сервиса                    │ Статус           │ Порты        │');
-  console.log('├─────┼─────────────────────────────────────┼──────────────────┼──────────────┤');
-
-  serviceNames.forEach((name, index) => {
-    const num = (index + 1).toString().padEnd(3);
-    const serviceName = name.padEnd(35);
-    const status = formatStatus(statuses[name] || 'unknown');
-    const statusPadded = status.padEnd(16);
-    const ports = getServicePorts(services[name]);
-    const portsPadded = ports.padEnd(12);
-    console.log(`│ ${num} │ ${serviceName} │ ${statusPadded} │ ${portsPadded} │`);
-  });
-
-  console.log('└─────┴─────────────────────────────────────┴──────────────────┴──────────────┘');
-  console.log(`\nВсего сервисов: ${serviceNames.length}`);
-}
-
-/**
- * Парсит ввод номеров сервисов
- */
-function parseServiceNumbers(input, totalServices) {
-  if (!input || input.trim() === '') {
-    // Пустой ввод - все сервисы
-    return Array.from({ length: totalServices }, (_, i) => i + 1);
-  }
-
-  const numbers = input
-    .trim()
-    .split(/\s+/)
-    .map(num => parseInt(num))
-    .filter(num => !isNaN(num) && num > 0 && num <= totalServices);
-
-  return numbers;
-}
-
-/**
  * Запускает docker compose команду
  * @param {string[]} serviceNames
  * @param {string} target
@@ -233,12 +281,10 @@ function runDockerCompose(serviceNames, target, monorepoRoot) {
 
   child.on('error', (error) => {
     console.error(`\n❌ Ошибка при запуске команды: ${error.message}`);
-    rl.close();
     process.exit(1);
   });
 
   child.on('exit', (code) => {
-    rl.close();
     process.exit(code || 0);
   });
 }
@@ -247,14 +293,13 @@ function runDockerCompose(serviceNames, target, monorepoRoot) {
  * Главная функция
  */
 async function manageDockerCompose() {
-  console.log('\n🐳 Docker Compose Manager\n');
+  console.log('🐳 Docker Compose Manager\n');
 
   let monorepoRoot;
   try {
     monorepoRoot = findMonorepoRoot();
   } catch (error) {
     console.error(`❌ ${error.message}`);
-    rl.close();
     process.exit(1);
   }
 
@@ -262,8 +307,7 @@ async function manageDockerCompose() {
 
   if (!fs.existsSync(composePath)) {
     console.error(`❌ Файл docker-compose.yml не найден в ${monorepoRoot}`);
-    console.log('💡 Создайте docker-compose.yml или запустите: npm run docker:create-compose');
-    rl.close();
+    console.log('💡 Создайте docker-compose.yml или запустите: pnpm run docker:create-compose');
     process.exit(1);
   }
 
@@ -273,7 +317,6 @@ async function manageDockerCompose() {
     compose = parseDockerCompose(composePath);
   } catch (error) {
     console.error(`❌ Ошибка при парсинге docker-compose.yml: ${error.message}`);
-    rl.close();
     process.exit(1);
   }
 
@@ -282,51 +325,86 @@ async function manageDockerCompose() {
 
   if (serviceNames.length === 0) {
     console.error('❌ В docker-compose.yml не найдено сервисов');
-    rl.close();
     process.exit(1);
   }
 
-  // Получаем статусы контейнеров
-  console.log('🔍 Проверяю статус контейнеров...');
-  const statuses = getContainerStatuses(serviceNames, monorepoRoot);
+  const { checkbox, select } = await loadPrompts();
 
-  // Выводим таблицу сервисов
-  displayServicesTable(services, statuses);
+  // Статус контейнеров — read-only, без побочных эффектов.
+  const statuses = getContainerStatuses(monorepoRoot);
 
-  // Запрашиваем выбор сервисов
-  console.log('\n💡 Введите номера сервисов через пробел (например: 1 3 5)');
-  console.log('   Или оставьте пустым для запуска всех сервисов');
-  const servicesInput = await question('\nВыберите сервисы: ');
+  // Актуальность — реально запускает docker build (до дешёвой стадии
+  // freshness, без install/build, без тега — образы не трогает), но это уже
+  // не спрашивается отдельно: проверка идёт всегда, только со спиннером,
+  // раз сама по себе она дешёвая и не имеет опасных побочных эффектов.
+  const stopSpinner = startSpinner('Проверяю актуальность образов (docker build --target freshness)...');
+  const builds = getComposeBuilds(monorepoRoot);
+  const freshness = await checkAllFreshness(monorepoRoot, builds);
+  stopSpinner();
 
-  const selectedNumbers = parseServiceNumbers(servicesInput, serviceNames.length);
+  // Список сервисов виден ДО выбора стратегии — при "Все"/"Все неактуальные"
+  // чекбокс ниже вообще не откроется, значит это единственное место, где
+  // статус/актуальность/порты вообще показываются.
+  console.log('📋 Сервисы:');
+  serviceNames.forEach((name) => {
+    console.log(`   ${name}  [${formatStatus(statuses[name] || 'unknown')}, ${formatFreshness(freshness[name])}, порты: ${getServicePorts(services[name])}]`);
+  });
+  console.log();
 
-  if (selectedNumbers.length === 0) {
-    console.error('❌ Не выбрано ни одного сервиса');
-    rl.close();
-    process.exit(1);
-  }
-
-  // Получаем имена выбранных сервисов
-  const selectedServices = selectedNumbers.map(num => serviceNames[num - 1]);
-
-  console.log('\n✅ Выбраны сервисы:');
-  selectedServices.forEach((name, index) => {
-    console.log(`   ${index + 1}. ${name}`);
+  // Стратегия выбора — отдельным select() перед возможным checkbox: у
+  // @inquirer/checkbox нет API для кастомных хоткеев (только remap
+  // встроенных all/invert, проверено), поэтому "выбрать все неактуальные"
+  // сделан отдельным пунктом, а не хоткеем внутри самого чекбокса.
+  const staleCount = serviceNames.filter((name) => freshness[name]?.changed).length;
+  const selectionMode = await select({
+    message: 'Какие сервисы запустить?',
+    choices: [
+      { name: 'Ручной выбор', value: 'manual' },
+      {
+        name: 'Все неактуальные',
+        value: 'stale',
+        disabled: staleCount === 0 ? '(нет неактуальных)' : false,
+      },
+      { name: 'Все', value: 'all' },
+    ],
   });
 
-  // Запрашиваем target (dev/prod)
-  console.log('\n🎯 Выберите target:');
-  console.log('   1. development (dev)');
-  console.log('   2. production (prod)');
-
-  const targetChoice = await question('\nВведите номер [по умолчанию: 1]: ') || '1';
-
-  let target;
-  if (targetChoice === '2' || targetChoice.toLowerCase() === 'prod' || targetChoice.toLowerCase() === 'production') {
-    target = 'production';
+  let selectedServices;
+  if (selectionMode === 'all') {
+    selectedServices = serviceNames;
+  } else if (selectionMode === 'stale') {
+    selectedServices = serviceNames.filter((name) => freshness[name]?.changed);
   } else {
-    target = 'development';
+    // Ничего не предвыбрано намеренно — явный выбор, не "снять лишнее".
+    selectedServices = await checkbox({
+      message: 'Выберите сервисы',
+      choices: serviceNames.map((name) => ({
+        name: `${name}  [${formatStatus(statuses[name] || 'unknown')}, ${formatFreshness(freshness[name])}, порты: ${getServicePorts(services[name])}]`,
+        value: name,
+      })),
+      // Дефолт склеивает весь декорированный name (со статусом/портами в
+      // скобках) через запятую — после подтверждения нужны только сами имена.
+      theme: {
+        style: {
+          renderSelectedChoices: (selected) => selected.map((c) => c.value).join(', '),
+        },
+      },
+    });
   }
+
+  if (selectedServices.length === 0) {
+    console.error('❌ Не выбрано ни одного сервиса (при "Все неактуальные" — возможно, все сервисы уже актуальны)');
+    process.exit(1);
+  }
+
+  // Выбор target
+  const target = await select({
+    message: 'Выберите target',
+    choices: [
+      { name: 'development (dev)', value: 'development' },
+      { name: 'production (prod)', value: 'production' },
+    ],
+  });
 
   console.log(`\n📌 Target: ${target}`);
 
@@ -337,9 +415,13 @@ async function manageDockerCompose() {
 // Запуск
 if (require.main === module) {
   manageDockerCompose().catch(err => {
+    // Ctrl+C в @inquirer/prompts бросает ExitPromptError — это штатная отмена
+    // пользователем, не ошибка, выходим тихо без стектрейса.
+    if (err?.name === 'ExitPromptError') {
+      console.log('\nОтменено');
+      process.exit(0);
+    }
     console.error('❌ Ошибка:', err.message);
-    rl.close();
     process.exit(1);
   });
 }
-
