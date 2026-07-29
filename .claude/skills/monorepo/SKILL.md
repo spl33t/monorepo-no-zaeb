@@ -10,10 +10,13 @@ description: >-
   packages via tools/cli/*.js, NOT by hand or rm -rf — remove:app/remove:package
   also strip docker-compose entries and workspace:* references. Covers: repo
   structure, imports/catalogs, CLI commands, Nest's webpack builder quirks,
-  Nestia SDK generation, Docker.
+  Nestia SDK generation, Docker. Editing tools/ itself (not just using it) is
+  gated on git origin — see warning at top of body.
 ---
 
 # Монорепозиторий
+
+> ⚠️ **Код в `tools/` (и его документацию — этот файл, `tools/README.md`) менять можно ТОЛЬКО если origin текущего репозитория — `https://github.com/spl33t/monorepo-no-zaeb`.** Перед любой правкой `tools/*` — проверить `git remote get-url origin`. Другой origin = это уже склонированная/форкнутая копия шаблона под конкретный проект, зафиксированная версия — тулинг в ней **используется** (`create:app`, `link:package`, `docker-compose-manager` и т.п.), но не модифицируется. Если пользователь просит поменять сам тулинг не в репозитории-шаблоне — уточнить, действительно ли он этого хочет, объяснив, что это разойдётся с шаблоном.
 
 ## Структура
 
