@@ -47,13 +47,21 @@ module.exports = (options) => {
       // (Program-based, required for typia/@nestia's plugins to see real
       // types).
       tsLoaderUse.options.transpileOnly = false;
-      // TS6059 ("File is not under rootDir") fires for any @packages/*
-      // import once transpileOnly is false, because the Program now spans
-      // apps/<name>/src AND the package's real (post-symlink) path. It's a
-      // cosmetic diagnostic — ts-loader doesn't write per-file output to
-      // disk preserving directory structure, webpack just bundles whatever
-      // it emits — so it's safe to ignore rather than widening rootDir to
-      // the monorepo root.
+      // TS6059 ("File is not under rootDir") fires for any import resolved
+      // outside the app's rootDir once transpileOnly is false — legitimate
+      // raw-source workspace deps (@packages/*, @tools/*, no build step,
+      // real post-symlink path in the diagnostic) trigger it just as much as
+      // a genuine mistake (e.g. a stray relative import escaping the app).
+      // ignoreDiagnostics filters by diagnostic CODE only, not by file — it
+      // does NOT exempt the offending file from type-checking, it only mutes
+      // this one specific "wrong location" complaint. Confirmed live: a
+      // relative import escaping the app with a real type error inside
+      // still fails the build (TS2322 surfaces normally) with this ignore
+      // in place — so there's nothing to actually hide here, code-level
+      // ignore is safe and a path-scoped webpack-plugin alternative (regex-
+      // parsing ts-loader's diagnostic message to scope the ignore to
+      // packages/ and tools/packages/) was tried and reverted as
+      // disproportionate complexity for a risk that isn't real.
       tsLoaderUse.options.ignoreDiagnostics = [6059];
     }
   }

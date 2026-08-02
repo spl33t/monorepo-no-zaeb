@@ -85,6 +85,7 @@ function createNestApp(appDir, name, port = '3000') {
     devDependencies: {
       '@nestia/sdk': 'catalog:nest',
       '@nestjs/cli': 'catalog:nest',
+      '@types/express': 'catalog:nest',
       '@types/node': 'catalog:shared',
       nestia: 'catalog:nest',
       'ts-loader': 'catalog:nest',
@@ -168,7 +169,7 @@ function createNestApp(appDir, name, port = '3000') {
       `pnpm --filter @apps/${name} build`,
     ],
     nextSteps: [
-      `SDK: pnpm run nestia:sdk → packages/${name}-api (создастся автоматически при первом запуске).`,
+      `SDK: pnpm run nestia:sdk → packages/${name}-api-client (создастся автоматически при первом запуске).`,
     ],
   };
 }

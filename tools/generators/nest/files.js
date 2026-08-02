@@ -79,9 +79,37 @@ export class AppService {
 `,
   );
 
+  fs.mkdirSync(path.join(appDir, 'src/types'), { recursive: true });
+  fs.writeFileSync(
+    path.join(appDir, 'src/types/global.ts'),
+    `// Сюда — global-декларации (namespace-аугментации и т.п.). nestia.config.ts
+// грузится отдельным ts-node-контекстом (не через webpack), поэтому
+// подхватывает этот файл только по явному triple-slash reference (см.
+// nestia.config.ts) — иначе SDK-генератор не увидит те же global-типы, что
+// видит основной билд приложения (проверено живьём: без reference nestia
+// sdk падает с крашем внутри @nestia/core на контроллере, использующем
+// отсюда тип).
+
+// Аугментация Express.Request — merge в РЕАЛЬНЫЙ namespace Express из
+// @types/express (devDependency), а не создание нового изолированного —
+// поэтому она видна и в @Req() req: Request (из 'express'), и в
+// req.someField напрямую. Добавляй свои поля сюда (например то, что
+// проставляет auth-middleware/guard).
+declare global {
+  namespace Express {
+    interface Request {}
+  }
+}
+
+export {};
+`,
+  );
+
   fs.writeFileSync(
     path.join(appDir, 'nestia.config.ts'),
-    `import type { INestiaConfig } from '@nestia/sdk';
+    `/// <reference path="./src/types/global.ts" />
+
+import type { INestiaConfig } from '@nestia/sdk';
 import { NestFactory } from '@nestjs/core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -91,13 +119,26 @@ import * as path from 'path';
  * SDK: pnpm run nestia:sdk (nestia sdk --project tsconfig.json — собственный
  * tsconfig app'а, отдельный SDK-конфиг не нужен).
  *
- * SDK едет прямо в packages/${name}-api/src — генерируемый клиент становится
- * настоящим @packages/*-пакетом (workspace:*), который любой app (в т.ч. Vite)
- * подключает как обычную зависимость, без ручного шага. package.json для
- * пакета создаётся автоматически при первом запуске, если его ещё нет —
- * дальше nestia просто перезаписывает файлы внутри src/, package.json не трогает.
+ * SDK едет прямо в packages/<name>-api-client/src — генерируемый клиент
+ * становится настоящим @packages/*-пакетом (workspace:*), который любой app
+ * (в т.ч. Vite) подключает как обычную зависимость, без ручного шага.
+ * package.json для пакета создаётся автоматически при первом запуске, если
+ * его ещё нет — дальше nestia просто перезаписывает файлы внутри src/,
+ * package.json не трогает.
+ *
+ * APP_NAME читается из package.json в рантайме (а не подставляется на этапе
+ * scaffold'а, как '${name}' в остальных generated-файлах) — переименование
+ * app'а/пакета в package.json подхватывается без регенерации nestia.config.ts.
+ *
+ * clone: true — DTO физически копируются в src/structures вместо того, чтобы
+ * генерируемый код ссылался на них через "import type" из исходного
+ * @packages/*. Это снимает саму возможность появления @packages/*-импортов в
+ * SDK — раньше здесь был process.on('exit', ...) сканер таких импортов,
+ * дописывающий их в package.json как workspace:*-зависимости; с clone он
+ * структурно никогда не сработал бы, поэтому убран.
  */
-const PACKAGE_NAME = '${name}-api';
+const APP_NAME = (require('./package.json').name as string).replace(/^@[^/]+\\//, '');
+const PACKAGE_NAME = APP_NAME + '-api-client';
 const PACKAGE_DIR = path.resolve(__dirname, '../../packages', PACKAGE_NAME);
 const SDK_OUTPUT = path.join(PACKAGE_DIR, 'src');
 
@@ -112,8 +153,8 @@ if (!fs.existsSync(packageJsonPath)) {
     types: './src/index.ts',
     exports: { '.': './src/index.ts' },
     // @nestia/fetcher — сам SDK-клиент (PlainFetcher и т.п.), typia — типы
-    // возвращаемых значений (Primitive<T>). Остальные @packages/* (DTO из
-    // контроллеров) дописываются автоматически ниже, после каждой генерации.
+    // возвращаемых значений (Primitive<T>). DTO клонируются локально
+    // (clone: true), поэтому больше ничего не требуется.
     dependencies: {
       '@nestia/fetcher': 'catalog:nest',
       typia: 'catalog:nest',
@@ -126,56 +167,13 @@ if (!fs.existsSync(packageJsonPath)) {
   );
 }
 
-// После генерации SDK-файлы могут ссылаться (даже только через "import type")
-// на другие @packages/* — например DTO контроллера, объявленный в @packages/shared.
-// tsc потребителя должен резолвить такой модуль при тайпчеке, поэтому пакет
-// должен быть настоящей зависимостью, а не только стёртым при сборке импортом.
-// Сканируем src/ после того, как nestia допишет файлы (process 'exit' — самый
-// надёжный момент: CLI отрабатывает генерацию синхронно в этом же процессе).
-process.on('exit', () => {
-  if (!fs.existsSync(SDK_OUTPUT)) return;
-
-  const referenced = new Set<string>();
-  const walk = (dir: string) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const entryPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(entryPath);
-        continue;
-      }
-      if (!entry.name.endsWith('.ts')) continue;
-      const content = fs.readFileSync(entryPath, 'utf8');
-      for (const match of content.matchAll(/from ['"](@packages\\/[a-z0-9-]+)['"]/g)) {
-        if (match[1] !== '@packages/' + PACKAGE_NAME) referenced.add(match[1]);
-      }
-    }
-  };
-  walk(SDK_OUTPUT);
-  if (referenced.size === 0) return;
-
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-  packageJson.dependencies = packageJson.dependencies || {};
-  let changed = false;
-  for (const pkg of referenced) {
-    if (packageJson.dependencies[pkg] !== 'workspace:*') {
-      packageJson.dependencies[pkg] = 'workspace:*';
-      changed = true;
-    }
-  }
-  if (!changed) return;
-  fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\\n');
-  console.log(
-    '[nestia.config] Добавил в packages/' + PACKAGE_NAME + '/package.json зависимост' +
-    (referenced.size === 1 ? 'ь' : 'и') + ': ' + [...referenced].join(', ') + ' — выполни "pnpm install".',
-  );
-});
-
 const NESTIA_CONFIG: INestiaConfig = {
   input: async () => {
     const { AppModule } = await import('./src/app.module');
     return NestFactory.create(AppModule);
   },
   output: SDK_OUTPUT,
+  clone: true,
 };
 
 export default NESTIA_CONFIG;
@@ -188,6 +186,8 @@ export default NESTIA_CONFIG;
       '  ├── app.module.ts',
       '  ├── app.controller.ts',
       '  ├── app.service.ts',
+      '  └── types/',
+      '      └── global.ts',
       'nestia.config.ts',
     ],
   };
