@@ -7,24 +7,6 @@
  */
 function generateWebpackConfig() {
   return `const nodeExternals = require('webpack-node-externals');
-const path = require('path');
-
-// dotenv reads .env at runtime (fs.readFileSync), not via require()/import —
-// it never enters webpack's module graph, so '--watch' doesn't see edits to
-// it by default. Registering it as an explicit file dependency makes webpack
-// treat it like any watched source file: editing .env triggers a rebuild,
-// which nest-cli's watch runner then restarts the process for (same restart
-// path as any .ts change), picking up the new values.
-class WatchEnvFilePlugin {
-  constructor(filePath) {
-    this.filePath = filePath;
-  }
-  apply(compiler) {
-    compiler.hooks.afterCompile.tap('WatchEnvFilePlugin', (compilation) => {
-      compilation.fileDependencies.add(this.filePath);
-    });
-  }
-}
 
 module.exports = (options) => {
   // Nest CLI's default devtool is 'false' unless '--debug' is passed, so
@@ -84,7 +66,14 @@ module.exports = (options) => {
   // ts-loader itself do a full type-check), every build would otherwise
   // type-check twice.
   options.plugins = options.plugins.filter((p) => p.constructor?.name !== 'ForkTsCheckerWebpackPlugin');
-  options.plugins.push(new WatchEnvFilePlugin(path.resolve(__dirname, '.env')));
+
+  // Раньше здесь был WatchEnvFilePlugin — регистрировал .env как file
+  // dependency, чтобы правка .env триггерила webpack-рестарт (dotenv читает
+  // файл через fs.readFileSync в рантайме, не через require()/import, так что
+  // сам webpack не видит правок .env по умолчанию). Убран: теперь .env/env.ts
+  // отслеживает @tools/workspace-env (--watch, см. package.json scripts) —
+  // второй независимый триггер рестарта на то же самое событие был бы гонкой,
+  // та же причина, по которой раньше убрали Turborepo.
 
   return options;
 };

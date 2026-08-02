@@ -51,17 +51,11 @@ function discoverAppPorts(root) {
   const result = [];
 
   for (const app of layout.listApps(repoRoot)) {
-    const envCandidates = [
-      path.join(app.absDir, '.env'),
-      path.join(app.absDir, '.env.example'),
-    ];
-
-    for (const envPath of envCandidates) {
-      if (!fs.existsSync(envPath)) continue;
+    const envPath = path.join(app.absDir, '.env');
+    if (fs.existsSync(envPath)) {
       const match = fs.readFileSync(envPath, 'utf8').match(/^PORT=(\d+)/m);
       if (match) {
         result.push({ app: `${app.relPosix}`, port: Number(match[1]) });
-        break;
       }
     }
   }

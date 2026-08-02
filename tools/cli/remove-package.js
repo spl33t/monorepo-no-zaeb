@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const layout = require('../lib/monorepo-layout');
+const { findPackageImportUsages } = require('../lib/scan-package-imports');
 
 /**
  * `@inquirer/prompts` — ESM-only с v8, грузится через динамический `import()`
@@ -82,15 +83,20 @@ function removePackageReferences(root, pkgName) {
 }
 
 /**
- * Удаляет пакеты и убирает ссылки на них у всех потребителей — один
- * консолидированный отчёт по ссылкам в конце, а не по одному на каждый
- * пакет (при batch-удалении дисклеймер про импорты повторялся бы столько
- * раз, сколько пакетов — читалось грязно).
+ * Удаляет пакеты, убирает ссылки на них у всех потребителей и ищет, где в
+ * apps/*, packages/* остались реальные импорты удалённых пакетов (сборка/
+ * тайпчек на них упадёт) — один консолидированный отчёт в конце, а не по
+ * одному на каждый пакет (при batch-удалении он повторялся бы столько раз,
+ * сколько пакетов — читалось грязно). Не переписывает эти импорты (в
+ * отличие от rename:package) — для удалённого пакета нет корректной цели
+ * замены, только конкретный список файл:строка вместо общей фразы
+ * "почисти вручную", чтобы не искать их руками по всему репо.
  * @param {string} root
  * @param {Array<{ name: string, absDir: string, relPosix: string }>} packages
  */
 function removePackagesAndReferences(root, packages) {
   const referencesByConsumer = new Map();
+  const importUsagesByPackage = new Map();
 
   for (const pkg of packages) {
     removePackage(pkg);
@@ -98,6 +104,8 @@ function removePackagesAndReferences(root, packages) {
       if (!referencesByConsumer.has(rel)) referencesByConsumer.set(rel, []);
       referencesByConsumer.get(rel).push(pkg.name);
     }
+    const usages = findPackageImportUsages(root, pkg.name);
+    if (usages.length > 0) importUsagesByPackage.set(pkg.name, usages);
   }
 
   if (referencesByConsumer.size > 0) {
@@ -105,7 +113,22 @@ function removePackagesAndReferences(root, packages) {
     for (const [rel, pkgNames] of referencesByConsumer) {
       console.log(`   ${rel}: ${pkgNames.map((n) => `@packages/${n}`).join(', ')}`);
     }
-    console.log('   Импорты в коде (import ... from "@packages/<name>") не трогал — почисти вручную.');
+  }
+
+  if (importUsagesByPackage.size > 0) {
+    console.log(
+      '\n⚠️  Остались импорты удалённых пакетов в коде (apps/*, packages/*) — сборка/тайпчек упадёт,' +
+        ' пока не поправишь вручную:',
+    );
+    for (const [pkgName, usages] of importUsagesByPackage) {
+      console.log(`   @packages/${pkgName}:`);
+      for (const usage of usages) {
+        console.log(`     ${usage.relPosix}`);
+        for (const hunk of usage.hunks) {
+          console.log(`       :${hunk.line}  ${hunk.match}`);
+        }
+      }
+    }
   }
 }
 
@@ -194,8 +217,9 @@ async function run() {
     console.log(
       'Использование: pnpm run remove:package -- <name> [--no-install] [--yes]\n\n' +
         'Удаляет packages/<name> и убирает "@packages/<name>": "workspace:*" из\n' +
-        'package.json всех apps/*, которые на него ссылались. Импорты в коде\n' +
-        '(import ... from "@packages/<name>") не трогает — это уже руками.\n' +
+        'package.json всех apps/*, которые на него ссылались. Показывает список\n' +
+        'оставшихся импортов "@packages/<name>" в apps/*, packages/* (файл:строка) —\n' +
+        'не переписывает их (для удалённого пакета нет цели замены), это уже руками.\n' +
         'Без аргументов — интерактивный выбор из списка.\n\n' +
         'Примеры:\n' +
         '  pnpm run remove:package -- shared\n' +

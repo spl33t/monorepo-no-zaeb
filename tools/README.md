@@ -28,7 +28,9 @@ tools/
 | Новый пакет | `pnpm run create:package` (интерактивно, в конце предложит подключить к app'ам/пакетам) или `pnpm run create:package -- <name> [--no-install]` |
 | Подключить пакет | `pnpm run link:package` (интерактивно, мультиселект: куда + какие пакеты) или `pnpm run link:package -- <app> <package...> [--kind nest\|vite] [--no-install]` |
 | Удалить app | `pnpm run remove:app -- <name> [--kind nest\|vite] [--yes]` (без аргументов — интерактивный мультиселект) |
+| Переименовать app | `pnpm run rename:app -- <old-name> <new-name> [--kind nest\|vite] [--yes]` (без аргументов — интерактивный выбор + ввод названия) |
 | Удалить пакет | `pnpm run remove:package -- <name> [--yes]` (без аргументов — интерактивный мультиселект) |
+| Переименовать пакет | `pnpm run rename:package -- <old-name> <new-name> [--yes]` (без аргументов — интерактивный выбор + ввод названия) |
 | Dev | `pnpm run dev` (интерактивный выбор) или `pnpm run dev <name>` → `pnpm --filter @apps/<name> run dev` |
 | Build | `pnpm run build` (все apps, `pnpm -r run build`) или `pnpm run build <name>` (один app) |
 | Освободить порт | `pnpm run kill:port` |
@@ -65,9 +67,9 @@ tools/
 
 ### Nestia SDK → packages/<name>-api (автоматически)
 
-`apps/<name>/nestia.config.ts` (генерируется для каждого nest-app'а) не просит указать `SDK_OUTPUT` руками — он сам целится в `packages/<name>-api/src` и при первом запуске `pnpm run sdk` (`nestia sdk --project tsconfig.json`) создаёт сам пакет: `packages/<name>-api/package.json` (`"name": "@packages/<name>-api"`, `main`/`types`/`exports` → `src/index.ts`, тот же raw-source-паттерн, что у любого `packages/*`) с базовыми зависимостями `@nestia/fetcher` + `typia`. Дальше `nestia sdk` просто перезаписывает файлы в `src/`, `package.json` не трогает — сгенерированный клиент становится обычным `workspace:*`-пакетом, который любой app (в т.ч. Vite) подключает как рядовую зависимость.
+`apps/<name>/nestia.config.ts` (генерируется для каждого nest-app'а) не просит указать `SDK_OUTPUT` руками — он сам целится в `packages/<name>-api/src` и при первом запуске `pnpm run nestia:sdk` (`nestia sdk --project tsconfig.json`) создаёт сам пакет: `packages/<name>-api/package.json` (`"name": "@packages/<name>-api"`, `main`/`types`/`exports` → `src/index.ts`, тот же raw-source-паттерн, что у любого `packages/*`) с базовыми зависимостями `@nestia/fetcher` + `typia`. Дальше `nestia sdk` просто перезаписывает файлы в `src/`, `package.json` не трогает — сгенерированный клиент становится обычным `workspace:*`-пакетом, который любой app (в т.ч. Vite) подключает как рядовую зависимость.
 
-Есть нюанс: если DTO контроллера — тип, объявленный в другом `@packages/*` (например `@packages/shared`), nestia честно эмитит `import type { X } from "@packages/shared"` в сгенерированном клиенте. Стирается при сборке, но tsc потребителя всё равно должен резолвить модуль на этапе тайпчека — без явной зависимости это `TS2307: Cannot find module` у любого app'а, который подключил только `@packages/<name>-api` (проверено живьём: именно так ведёт себя golden-пример — `AppController.getHello()` возвращает `Greeting` из `@packages/shared`). Поэтому `nestia.config.ts` после каждой генерации сам сканирует `packages/<name>-api/src/**/*.ts` на `@packages/*`-импорты и дописывает найденное в `dependencies` (`workspace:*`) — правки идемпотентны, повторный `pnpm run sdk` без изменений в API ничего не трогает.
+Есть нюанс: если DTO контроллера — тип, объявленный в другом `@packages/*` (например `@packages/shared`), nestia честно эмитит `import type { X } from "@packages/shared"` в сгенерированном клиенте. Стирается при сборке, но tsc потребителя всё равно должен резолвить модуль на этапе тайпчека — без явной зависимости это `TS2307: Cannot find module` у любого app'а, который подключил только `@packages/<name>-api` (проверено живьём: именно так ведёт себя golden-пример — `AppController.getHello()` возвращает `Greeting` из `@packages/shared`). Поэтому `nestia.config.ts` после каждой генерации сам сканирует `packages/<name>-api/src/**/*.ts` на `@packages/*`-импорты и дописывает найденное в `dependencies` (`workspace:*`) — правки идемпотентны, повторный `pnpm run nestia:sdk` без изменений в API ничего не трогает.
 
 ## pnpm catalogs — версии зависимостей
 

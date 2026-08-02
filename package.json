@@ -10,8 +10,10 @@
     "build": "node tools/cli/run-script.js build",
     "create:app": "node tools/cli/create-app.js",
     "remove:app": "node tools/cli/remove-app.js",
+    "rename:app": "node tools/cli/rename-app.js",
     "create:package": "node tools/cli/create-package.js",
     "remove:package": "node tools/cli/remove-package.js",
+    "rename:package": "node tools/cli/rename-package.js",
     "link:package": "node tools/cli/link-package.js",
     "kill:port": "node tools/cli/kill-port.js",
     "--------------------------------Docker-----------------------------------------": "",
@@ -25,6 +27,7 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.5.2",
+    "@tools/workspace-env": "workspace:*",
     "cross-env": "^7.0.3"
   },
   "devDependencies": {

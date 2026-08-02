@@ -89,7 +89,7 @@ description: >-
 
 ## Nestia SDK → packages/<name>-api
 
-`apps/<name>/nestia.config.ts` (генерируется автоматически) целится в `packages/<name>-api/src` — при первом `pnpm run sdk` создаёт сам пакет (`package.json` с `@nestia/fetcher` + `typia`), дальше только перезаписывает `src/`. Если DTO контроллера — тип из другого `@packages/*` (например `@packages/shared`), nestia эмитит `import type` на него — стирается при сборке, но tsc потребителя всё равно должен резолвить модуль при тайпчеке. Поэтому `nestia.config.ts` после каждой генерации сам сканирует `src/**/*.ts` на `@packages/*`-импорты и дописывает найденное в `dependencies` (`workspace:*`, идемпотентно — повторный `pnpm run sdk` без изменений в API ничего не трогает).
+`apps/<name>/nestia.config.ts` (генерируется автоматически) целится в `packages/<name>-api/src` — при первом `pnpm run nestia:sdk` создаёт сам пакет (`package.json` с `@nestia/fetcher` + `typia`), дальше только перезаписывает `src/`. Если DTO контроллера — тип из другого `@packages/*` (например `@packages/shared`), nestia эмитит `import type` на него — стирается при сборке, но tsc потребителя всё равно должен резолвить модуль при тайпчеке. Поэтому `nestia.config.ts` после каждой генерации сам сканирует `src/**/*.ts` на `@packages/*`-импорты и дописывает найденное в `dependencies` (`workspace:*`, идемпотентно — повторный `pnpm run nestia:sdk` без изменений в API ничего не трогает).
 
 ## Docker
 

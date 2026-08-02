@@ -10,31 +10,20 @@ function generateViteConfig(framework) {
   const reactImport = framework === 'react' ? `import react from '@vitejs/plugin-react';\n` : '';
   const plugins = framework === 'react' ? '\n  plugins: [react()],' : '';
 
-  return `import { readFileSync } from 'node:fs';
-import path from 'node:path';
+  return `import path from 'node:path';
 import { defineConfig } from 'vite';
+import { env } from './env';
 ${reactImport}
-/**
- * PORT из .env (cwd = каталог приложения при dev/build/preview), иначе
- * process.env.PORT, иначе дефолт. Не падает, если .env физически нет —
- * он намеренно в .dockerignore (не должен попадать в образ); для Docker
- * production (статика под nginx) значение вообще не используется, а
- * жёсткий throw ломал сборку без него. Для dev/preview реальный порт
- * приходит через docker-compose env_file/watch-sync или обычный .env локально.
- */
-function portFromEnv(defaultPort: number): number {
-  const envPath = path.resolve(process.cwd(), '.env');
-  try {
-    const content = readFileSync(envPath, 'utf8');
-    const match = content.match(/^PORT=(\\d+)/m);
-    if (match) return parseInt(match[1], 10);
-  } catch {
-    // .env отсутствует — см. комментарий выше.
-  }
-  return process.env.PORT ? parseInt(process.env.PORT, 10) : defaultPort;
-}
-
-const port = portFromEnv(5173);
+// env.ts валидирует PORT через zod с .default(...) — safeParse никогда не
+// бросает, даже при \`vite build\` в Docker (builder-стадия без .env, PORT
+// в process.env не задан): тогда используется дефолт из схемы. Там, где
+// PORT реально есть (dev/preview — инжектит workspace-env), используется
+// он. vite.config.ts грузится Node'ом нативно (bare-специфайеры вроде
+// @tools/workspace-env не бандлятся Vite'ом при загрузке конфига) — node-
+// вариант defineEnv (tools/packages/workspace-env/src/define-env.ts)
+// специально самодостаточен (без внутренних relative-импортов) именно
+// ради этого случая.
+const port = env.PORT;
 
 export default defineConfig({
   server: { port, host: '0.0.0.0' },
@@ -42,6 +31,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(process.cwd(), 'src'),
+      // Только для VITE_*-полей схемы env.ts (см. tsconfig.json#paths) —
+      // резолвится Vite'ом в browser-вариант @tools/workspace-env
+      // (import.meta.env), не в process.env.
+      '@env': path.resolve(process.cwd(), 'env.ts'),
     },
   },${plugins}
 });

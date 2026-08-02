@@ -28,7 +28,7 @@ function validateEnvFile(app) {
 
   if (!fs.existsSync(envPath)) {
     throw new Error(
-      `Файл ${app.relPosix}/.env не найден. Создайте его на основе ${app.relPosix}/.env.example`,
+      `Файл ${app.relPosix}/.env не найден. Нужные переменные см. в ${app.relPosix}/env.ts`,
     );
   }
 
@@ -224,7 +224,7 @@ async function createDockerCompose() {
   await addAppToDockerCompose(appNameArg || null);
 }
 
-module.exports = { addAppToDockerCompose };
+module.exports = { addAppToDockerCompose, createServiceConfig, getAppPort };
 
 if (require.main === module) {
   createDockerCompose().catch((err) => {

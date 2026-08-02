@@ -8,22 +8,20 @@ const path = require('path');
  * @param {string} name
  */
 function generateNestFiles(appDir, name) {
-  const mainContent = `import { config } from 'dotenv';
-config({ path: '.env' });
-
-import { NestFactory } from '@nestjs/core';
+  const mainContent = `import { NestFactory } from '@nestjs/core';
+import { env } from '@env';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
 
-  const port = process.env.PORT ?? '3000';
+  const port = env.PORT;
   const host = '0.0.0.0';
 
   await app.listen(port, host);
   console.log(\`🚀 ${name} is running on: http://\${host}:\${port}\`);
-  console.log(\`📦 NODE_ENV: \${process.env.NODE_ENV || 'not set'}\`);
+  console.log(\`📦 NODE_ENV: \${env.NODE_ENV}\`);
 }
 
 bootstrap();
@@ -90,8 +88,8 @@ import * as path from 'path';
 
 /**
  * NestFactory input (samchon/backend).
- * SDK: pnpm run sdk (nestia sdk --project tsconfig.json — собственный tsconfig
- * app'а, отдельный SDK-конфиг не нужен).
+ * SDK: pnpm run nestia:sdk (nestia sdk --project tsconfig.json — собственный
+ * tsconfig app'а, отдельный SDK-конфиг не нужен).
  *
  * SDK едет прямо в packages/${name}-api/src — генерируемый клиент становится
  * настоящим @packages/*-пакетом (workspace:*), который любой app (в т.ч. Vite)

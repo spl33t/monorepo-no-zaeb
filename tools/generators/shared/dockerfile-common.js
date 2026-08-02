@@ -40,6 +40,17 @@
  * переустановка (правка реальной зависимости) — проверено живьём: 117s без
  * cache mount → 29s с ним (`reused 392, downloaded 0` в логе install — из
  * сети не тянется вообще ничего).
+ *
+ * `tools/packages/*` (root-уровня workspace-пакеты вроде `@tools/workspace-env`
+ * — root-зависимость, не в графе конкретного app'а) копируются в `freshness`
+ * ЦЕЛИКОМ, тем же путём, что и в резолвере не участвуют. Причина — не
+ * "забыли", а обнаруженный живьём баг: `pnpm --filter "{apps/<name>}..."
+ * list` не включает root-only зависимости в свой вывод (resolver их
+ * физически не видит), а `pnpm install` тем не менее пытается их
+ * слинковать — без реального `COPY` симлинк `node_modules/@tools/<name>`
+ * внутри образа указывает в никуда (сам pnpm install не падает, но
+ * `node_modules/.bin/<bin>` не создаётся вовсе — бинарник молча пропадает,
+ * ошибка всплывает только в рантайме контейнера как "command not found").
  * @param {string} appName
  * @returns {string}
  */
@@ -68,6 +79,7 @@ WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 COPY apps/${appName} ./apps/${appName}/
 COPY --from=resolver /needed ./packages/
+COPY tools/packages ./tools/packages/
 
 FROM freshness AS deps
 

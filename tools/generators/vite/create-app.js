@@ -4,6 +4,8 @@ const { generateViteDockerfile } = require('./dockerfile');
 const { generateViteConfig } = require('./vite-config');
 const { generateReactFiles } = require('./react-files');
 const { generateVanillaFiles } = require('./vanilla-files');
+const { generateEnvTs } = require('../shared/env-ts');
+const { generateDockerignore } = require('../shared/dockerignore');
 
 /**
  * Vite app under apps/<name>.
@@ -25,9 +27,9 @@ function createViteApp(appDir, name, framework, port = '5173') {
     type: 'module',
     monorepo: { kind: 'vite' },
     scripts: {
-      dev: 'vite',
+      dev: 'workspace-env --debug --watch vite',
       build: 'tsc && vite build',
-      preview: 'vite preview',
+      preview: 'workspace-env vite preview',
     },
     dependencies:
       framework === 'react'
@@ -76,6 +78,12 @@ function createViteApp(appDir, name, framework, port = '5173') {
       types: ['vite/client', 'node'],
       paths: {
         '@/*': ['./src/*'],
+        // env.ts лежит рядом с package.json (вне src/) — алиас на конкретный
+        // файл, а не паттерн. Из src/ безопасен только для VITE_*-полей
+        // схемы (браузер резолвит их через import.meta.env, не process.env,
+        // см. @tools/workspace-env exports#browser) — остальные поля тихо
+        // вернут .default() или бросят при отсутствии.
+        '@env': ['./env.ts'],
       },
     },
     include: ['src', 'vite.config.ts'],
@@ -105,31 +113,42 @@ function createViteApp(appDir, name, framework, port = '5173') {
     path.join(appDir, 'src/vite-env.d.ts'),
     `/// <reference types="vite/client" />
 
-interface ImportMetaEnv {
-  //readonly VITE_API_URL?: string;
-}
+import type { env } from '../env';
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv & Record<string, string | undefined>;
+// Типы ImportMetaEnv выведены из схемы env.ts (typeof env), а не продублированы
+// руками — единственный источник правды. Pick строго по префиксу VITE_, а не
+// typeof env целиком: только такие поля реально попадают в import.meta.env
+// (ограничение самого Vite, см. tools/packages/workspace-env/README.md) —
+// остальные (например PORT) в браузере реально undefined, взять весь typeof
+// было бы враньём в типах. Аугментация нужна только тем, кто предпочитает
+// сырой import.meta.env.VITE_X вместо import { env } from '@env' — у обоих
+// один источник схемы.
+type ViteEnvFields<T> = {
+  [K in keyof T as K extends \`VITE_\${string}\` ? K : never]: T[K];
+};
+
+declare global {
+  interface ImportMetaEnv extends Readonly<ViteEnvFields<typeof env>> {}
+  // Без этого у vite/client ImportMetaEnv по умолчанию имеет permissive
+  // fallback (Record<string, any>) — любой ключ (включая не-VITE_, например
+  // PORT) тайпчекался бы независимо от аугментации выше, сводя Pick-фильтр
+  // на нет. Официальный opt-in из самого vite/client (importMeta.d.ts).
+  interface ViteTypeOptions {
+    strictImportMetaEnv: unknown;
+  }
 }
 `,
   );
 
-  fs.writeFileSync(
-    path.join(appDir, '.env.example'),
-    `# Environment variables
-PORT=${port}
-
-# Только VITE_* доступны в клиенте
-# VITE_API_URL=http://localhost:3000
-`,
-  );
   fs.writeFileSync(path.join(appDir, '.env'), `PORT=${port}\n`);
+  // workspace-env (root devDependency) требует env.ts рядом с .env — без
+  // него структурная ошибка ("непровалидированные значения без схемы"),
+  // см. tools/packages/workspace-env/README.md. Отдельного .env.example
+  // больше нет — env.ts (закоммиченная типизированная схема) и есть
+  // документация того, какие переменные нужны.
+  fs.writeFileSync(path.join(appDir, 'env.ts'), generateEnvTs(Number(port)));
   fs.writeFileSync(path.join(appDir, 'Dockerfile'), generateViteDockerfile(name));
-  fs.writeFileSync(
-    path.join(appDir, '.dockerignore'),
-    `node_modules\ndist\n.env\n.env.local\n*.log\n.DS_Store\n.git\n.gitignore\nREADME.md\n.vscode\n.idea\n`,
-  );
+  fs.writeFileSync(path.join(appDir, '.dockerignore'), generateDockerignore());
 
   return {
     structure: [
@@ -140,7 +159,7 @@ PORT=${port}
       'package.json',
       'tsconfig.json',
       '.env',
-      '.env.example',
+      'env.ts',
       'Dockerfile',
       '.dockerignore',
     ],
@@ -151,7 +170,7 @@ PORT=${port}
     ],
     nextSteps: [`Открой http://localhost:${port}`],
     envInfo: [
-      'Переменные: префикс VITE_ в .env, типы в src/vite-env.d.ts',
+      'Переменные для src/: префикс VITE_ в .env, схема + доступ через import { env } from \'@env\'',
     ],
   };
 }

@@ -4,6 +4,8 @@ const { generateNestFiles } = require('./files');
 const { generateNodeTsconfig } = require('./tsconfig');
 const { generateNodeDockerfile } = require('./dockerfile');
 const { generateWebpackConfig } = require('./webpack-config');
+const { generateEnvTs } = require('../shared/env-ts');
+const { generateDockerignore } = require('../shared/dockerignore');
 
 /**
  * @param {string} appDir
@@ -13,9 +15,6 @@ const { generateWebpackConfig } = require('./webpack-config');
 function createNestApp(appDir, name, port = '3000') {
   const variantFiles = generateNestFiles(appDir, name);
   const entry = `dist/main.js`;
-  // cross-env — root devDependency; pnpm сам добавляет
-  // <workspace root>/node_modules/.bin в PATH для скриптов любого app.
-  const xenv = 'cross-env';
 
   /** @type {Record<string, unknown>} */
   const packageJson = {
@@ -38,10 +37,10 @@ function createNestApp(appDir, name, port = '3000') {
       // --enable-source-maps — иначе стектрейсы указывают на dist/main.js
       // построчно, а не на реальный исходник (webpack.config.js уже пишет
       // .map, но сам Node должен явно их использовать).
-      dev: `${xenv} NODE_ENV=development NODE_OPTIONS=--enable-source-maps nest start --watch`,
+      dev: `workspace-env --debug --watch --set NODE_ENV=development --set NODE_OPTIONS=--enable-source-maps nest start --watch`,
       build: 'nest build',
-      start: `${xenv} NODE_ENV=production node --enable-source-maps ${entry}`,
-      sdk: 'nestia sdk --project tsconfig.json',
+      start: `workspace-env --set NODE_ENV=production node --enable-source-maps ${entry}`,
+      'nestia:sdk': 'nestia sdk --project tsconfig.json',
       prepare: 'ts-patch install',
     },
     // Правило (проверено живьём — чистый Docker-билд, --prod --ignore-scripts,
@@ -71,7 +70,6 @@ function createNestApp(appDir, name, port = '3000') {
       '@nestjs/common': 'catalog:nest',
       '@nestjs/core': 'catalog:nest',
       '@nestjs/platform-express': 'catalog:nest',
-      dotenv: 'catalog:nest',
       typia: 'catalog:nest',
     },
     // ts-loader и webpack-node-externals — то же правило, что у dependencies
@@ -126,16 +124,29 @@ function createNestApp(appDir, name, port = '3000') {
 
   fs.writeFileSync(path.join(appDir, 'webpack.config.js'), generateWebpackConfig());
 
-  fs.writeFileSync(
-    path.join(appDir, '.env.example'),
-    `# Environment variables\n# Copy this file to .env and set your values\n\nPORT=${port}\n`,
-  );
   fs.writeFileSync(path.join(appDir, '.env'), `PORT=${port}\n`);
-  fs.writeFileSync(path.join(appDir, 'Dockerfile'), generateNodeDockerfile(name));
+  // workspace-env (root devDependency, см. package.json) требует env.ts рядом
+  // с .env — без него это структурная ошибка ("непровалидированные значения
+  // без схемы"), см. tools/packages/workspace-env/README.md. Отдельного
+  // .env.example больше нет — env.ts (закоммиченная типизированная схема)
+  // и есть документация того, какие переменные нужны, точнее и без риска
+  // разъехаться с реальностью, в отличие от текстового шаблона.
+  // .default('development'): workspace-env (bootstrap) валидирует схему ДО
+  // того, как cross-env (см. scripts.dev/start выше) успевает выставить
+  // NODE_ENV — на момент собственной проверки бутстрапа переменная ещё не
+  // задана. Без дефолта бутстрап падал бы на каждом запуске. К моменту, когда
+  // main.ts реально читает env.NODE_ENV (уже внутри запущенного cross-env),
+  // значение в process.env настоящее — дефолт бутстрапа этого не переопределяет
+  // (отдельный процесс, отдельная валидация, реальное приложение видит только
+  // свой собственный process.env).
   fs.writeFileSync(
-    path.join(appDir, '.dockerignore'),
-    `node_modules\ndist\n.env\n.env.local\n*.log\n.DS_Store\n.git\n.gitignore\nREADME.md\n.vscode\n.idea\n`,
+    path.join(appDir, 'env.ts'),
+    generateEnvTs(Number(port), [
+      "NODE_ENV: z.enum(['development', 'production', 'test']).default('development')",
+    ]),
   );
+  fs.writeFileSync(path.join(appDir, 'Dockerfile'), generateNodeDockerfile(name));
+  fs.writeFileSync(path.join(appDir, '.dockerignore'), generateDockerignore());
 
   const structure = [
     'src/',
@@ -146,8 +157,8 @@ function createNestApp(appDir, name, port = '3000') {
     'webpack.config.js',
     'Dockerfile',
     '.dockerignore',
-    '.env.example',
     '.env',
+    'env.ts',
   ];
 
   return {
@@ -157,7 +168,7 @@ function createNestApp(appDir, name, port = '3000') {
       `pnpm --filter @apps/${name} build`,
     ],
     nextSteps: [
-      `SDK: pnpm run sdk → packages/${name}-api (создастся автоматически при первом запуске).`,
+      `SDK: pnpm run nestia:sdk → packages/${name}-api (создастся автоматически при первом запуске).`,
     ],
   };
 }

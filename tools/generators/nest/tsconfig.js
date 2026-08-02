@@ -39,6 +39,10 @@ function generateNodeTsconfig() {
       types: ['node'],
       paths: {
         '@/*': ['./src/*'],
+        // env.ts лежит рядом с package.json (вне rootDir: 'src') — алиас на
+        // конкретный файл, а не паттерн, чтобы из любой глубины src/ можно
+        // было писать import { env } from '@env' вместо ../../../env.
+        '@env': ['./env.ts'],
       },
       plugins: [
         { transform: 'typia/lib/transform' },
