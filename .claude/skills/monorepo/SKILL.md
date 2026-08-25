@@ -87,9 +87,11 @@ description: >-
 
 То же для build-time: `ts-loader` и `webpack-node-externals` — явные `devDependencies`, потому что webpack резолвит их (`require('webpack-node-externals')` в `webpack.config.js`, строку `'ts-loader'` как имя loader'а) от `apps/<name>/node_modules` — без этого `Module not found`. `tsconfig-paths` не нужен — `@nestia/sdk` теперь сам его зависимость.
 
-## Nestia SDK → packages/<name>-api
+## Nestia SDK → packages/<name>-api-client
 
-`apps/<name>/nestia.config.ts` (генерируется автоматически) целится в `packages/<name>-api/src` — при первом `pnpm run nestia:sdk` создаёт сам пакет (`package.json` с `@nestia/fetcher` + `typia`), дальше только перезаписывает `src/`. Если DTO контроллера — тип из другого `@packages/*` (например `@packages/shared`), nestia эмитит `import type` на него — стирается при сборке, но tsc потребителя всё равно должен резолвить модуль при тайпчеке. Поэтому `nestia.config.ts` после каждой генерации сам сканирует `src/**/*.ts` на `@packages/*`-импорты и дописывает найденное в `dependencies` (`workspace:*`, идемпотентно — повторный `pnpm run nestia:sdk` без изменений в API ничего не трогает).
+`apps/<name>/nestia.config.ts` (генерируется автоматически) целится в `packages/<name>-api-client/src` — при первом `pnpm run nestia:sdk` создаёт сам пакет (`package.json` с `@nestia/fetcher` + `typia`), дальше перезаписывает `src/` и поле `exports`. `clone: true` — DTO копируются в `src/structures`, поэтому `@packages/*`-импортов в сгенерированном SDK структурно не бывает (нет и не нужен сканер таких импортов).
+
+Несколько Nest-модулей → один пакет, разные entry point'ы: `nestia.config.ts` держит массив `MODULES: { name, module }[]` (по умолчанию один — `'index'` → `AppModule`) и default-экспортирует `INestiaConfig[]`, по одному конфигу на модуль — `nestia sdk` штатно прогоняет каждый элемент массива отдельным проходом (родная возможность CLI, не хак). `'index'` → корень пакета (`@packages/<name>-api-client`), любое другое имя → `src/<name>` + подпуть `exports["./<name>"]` (`@packages/<name>-api-client/<name>`). `exports` (и `main`/`types` для `'index'`) пересчитывается из `MODULES` при каждом запуске, идемпотентно; `dependencies` и остальное в `package.json` не трогается. `@nestia/sdk` сам никогда не удаляет файлы в output (только дописывает/перезаписывает) — переименование/удаление модуля, самого `'index'` или контроллера ВНУТРИ модуля иначе оставляли бы осиротевшие файлы. Раз `nestia sdk` и так полностью регенерирует каждый конфиг из `MODULES` при каждом запуске, `nestia.config.ts` сносит весь `src/` перед генерацией — надёжнее, чем диффить `exports` прошлого запуска (та схема не видела осиротевшие файлы контроллеров внутри оставшегося модуля).
 
 ## Docker
 
