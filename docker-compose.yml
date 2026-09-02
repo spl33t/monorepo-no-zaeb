@@ -1,1 +1,20 @@
-services: {}
+services:
+  nest-nest:
+    build:
+      context: .
+      dockerfile: apps/nest/Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    container_name: nest-nest
+    ports:
+      - 3000:3000
+    env_file:
+      - apps/nest/.env
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/nest
+          target: /src/apps/nest
+        - action: sync
+          path: ./packages
+          target: /src/packages

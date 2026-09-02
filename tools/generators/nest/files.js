@@ -138,7 +138,7 @@ import * as path from 'path';
  * свой @Module с контроллерами) — его SDK уедет в src/<name>, а package.json
  * → exports получит подпуть './<name>' → 'src/<name>/index.ts', импортируется
  * отдельно: '@packages/<name>-api-client/<name>'. default export ниже —
- * МАССИВ INestiaConfig; `nestia sdk` штатно прогоняет каждый элемент массива
+ * МАССИВ INestiaConfig; nestia sdk штатно прогоняет каждый элемент массива
  * отдельным проходом генерации (NestiaSdkCommand внутри @nestia/sdk) — это
  * родная возможность CLI, не самодельный цикл поверх него.
  *
@@ -161,12 +161,16 @@ const MODULES: { name: string; module: () => Promise<Type<any>> }[] = [
 // Красивый лог вместо голого вывода @nestia/sdk (тот сам печатает только
 // разделители + счётчики контроллеров/путей/роутов на КАЖДЫЙ entry point, без
 // имени/подпути — не разобрать, где что, если entry point'ов больше одного).
-const subpathOf = (name: string) => (name === 'index' ? '.' : './' + name);
 console.log(
-  \`\\n📦 nestia sdk → packages/\${PACKAGE_NAME} (\${MODULES.length} entry point\${MODULES.length === 1 ? '' : 's'})\`,
+  \`\n📦 nestia sdk load \${MODULES.length} entry point\${MODULES.length === 1 ? '' : 's'}\`,
 );
-for (const { name } of MODULES)
-  console.log(\`   \${subpathOf(name)} → src/\${name === 'index' ? 'index.ts' : name + '/index.ts'}\`);
+let count = 0;
+for (const { name, module } of MODULES) {
+  count + 1;
+  console.log(
+    \`\${count}. \${name} (\${module.name}) → packages/src/\${name === 'index' ? 'index.ts' : name + '/index.ts'}\`,
+  );
+}
 
 // @nestia/sdk сам никогда не удаляет файлы в output — только дописывает и
 // перезаписывает (проверено чтением исходников: ни одного rmSync/unlinkSync

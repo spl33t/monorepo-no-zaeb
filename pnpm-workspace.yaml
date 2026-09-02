@@ -24,6 +24,7 @@ catalogs:
     typia: 12.1.0
     webpack-node-externals: ^3.0.0
   vite:
+    '@tanstack/react-query': ^5.101.4
     '@types/react': ^19.0.0
     '@types/react-dom': ^19.0.0
     '@vitejs/plugin-react': ^5.0.4
