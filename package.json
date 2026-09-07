@@ -19,6 +19,7 @@
     "--------------------------------Docker-----------------------------------------": "",
     "docker:create-compose": "node tools/cli/create-docker-compose.js",
     "docker:compose-manager": "node tools/cli/docker-compose-manager.js",
+    "dcm": "pnpm run docker:compose-manager",
     "docker:up-all": "cross-env DOCKER_TARGET=production docker compose up --build",
     "docker:up-all:watch": "docker compose up --watch --build",
     "docker:down-all": "docker compose down",
