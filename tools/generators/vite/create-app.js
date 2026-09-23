@@ -63,6 +63,20 @@ function createViteApp(appDir, name, framework, port = '5173') {
       lib: ['ES2020', 'DOM', 'DOM.Iterable'],
       module: 'ESNext',
       moduleResolution: 'bundler',
+      // Без этого tsc/tsserver игнорируют условие "browser" в чужих
+      // package.json#exports (например у @tools/workspace-env — см. его
+      // exports#browser) и всегда резолвят на "default", даже для файлов из
+      // src/, которые реальный бандлер (Vite/esbuild) собирает именно с
+      // "browser". Чисто аддитивно: пакеты без ключа "browser" в exports
+      // резолвятся как раньше, ничего не меняется. Один нюанс, который эта
+      // настройка не убирает — она на весь tsconfig-Program, а не per-файл,
+      // так что и внутри vite.config.ts (он грузится Node'ом напрямую и
+      // реально резолвит "default", не "browser") tsc для СВОИХ целей
+      // (типы/go to definition) будет считать активным "browser" — без
+      // последствий, пока у node/browser-вариантов одинаковая сигнатура
+      // экспорта, но если они когда-то разойдутся типами — тайпчек здесь
+      // соврёт именно в эту сторону.
+      customConditions: ['browser'],
       jsx: framework === 'vanilla' ? 'preserve' : 'react-jsx',
       strict: true,
       skipLibCheck: true,

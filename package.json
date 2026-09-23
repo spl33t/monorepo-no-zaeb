@@ -6,6 +6,7 @@
   "scripts": {
     "--------------------------------Global utils------------------------------------": "",
     "deps:install": "pnpm install",
+    "typecheck": "tsc -p tsconfig.json",
     "dev": "node tools/cli/run-script.js dev",
     "build": "node tools/cli/run-script.js build",
     "create:app": "node tools/cli/create-app.js",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:shared",
+    "typescript": "catalog:shared",
     "yaml": "^2.8.2"
   }
 }
