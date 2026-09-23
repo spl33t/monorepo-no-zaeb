@@ -2,7 +2,7 @@
 // import { functional as appApi } from "@packages/nest-api-client";
 // import { functional as humanApi } from "@packages/nest-api-client/human";
 // import { useQueryClient } from "@tanstack/react-query";
-// import { createApiHooks } from "./wrapper";
+// import { createApiHooks } from "./react";
 
 // const connection: IConnection = {
 //   host: "http://localhost:3000",
@@ -12,7 +12,7 @@
 //  * Одна фабрика — один сгенерированный Nestia-клиент (entry point). Для
 //  * другого клиента (другой entry point) вызываем createApiHooks ещё раз —
 //  * мерджа между несколькими sdk в одном вызове нет, решили осознанно (см.
-//  * обсуждение в wrapper.ts).
+//  * обсуждение в core/routes.ts).
 //  */
 // const app = createApiHooks({ connection, sdk: appApi });
 // const human = createApiHooks({ connection, sdk: humanApi });

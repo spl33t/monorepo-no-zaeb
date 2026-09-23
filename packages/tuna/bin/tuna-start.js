@@ -1,0 +1,226 @@
+#!/usr/bin/env node
+
+// Framework-agnostic обёртка над `tuna` (публичный dev-туннель): поднимает
+// `tuna http <target> --domain=...` рядом с dev-командой и прибивает оба
+// дерева процессов вместе. cross-spawn/tree-kill — тот же паттерн, что и в
+// @tools/workspace-env (см. её bin/workspace-env.js): обычный child.kill()
+// не достаёт до вложенных детей (vite/webpack и т.п.), остаются сироты.
+const crossSpawn = require('cross-spawn');
+const treeKill = require('tree-kill');
+const net = require('node:net');
+const https = require('node:https');
+
+const HELP_TEXT = `tuna-start — framework-agnostic лаунчер туннеля \`tuna\`.
+
+Использование:
+  tuna-start [опции]                 только туннель (замена старого standalone "pnpm run tuna")
+  tuna-start [опции] -- <команда...>  туннель + dev-команда рядом, оба дерева процессов
+                                       прибиваются вместе (Ctrl+C, падение любого из них)
+
+Опции:
+  --target <template>   Явная цель для tuna вместо автодетекта. Плейсхолдеры
+                         {ИМЯ} резолвятся из process.env.ИМЯ (регистр как у
+                         самой переменной) — например "0.0.0.0:{PORT}".
+  -h, --help             Показать эту справку и выйти.
+
+Автодетект цели (когда --target не передан):
+  1. Ждёт (до 60с), пока PORT начнёт принимать TCP-соединения — поэтому
+     обёрнутая команда (если есть) спавнится ДО детекта, а не после.
+  2. Пробует HTTPS-запрос с коротким таймаутом: получилось — https://,
+     не получилось — http://.
+  Итог — http(s)://localhost:\${PORT}, без ручной настройки под фреймворк.
+
+Переменные окружения:
+  PORT           обязательна, только если используется автодетект (без --target)
+  TUNA_DOMAIN    обязательна всегда — публичный домен туннеля
+  TUNA_API_KEY   опциональна — токен tuna, если аккаунт его требует
+
+Запускать нужно обёрнутым в workspace-env — он валидирует PORT/TUNA_DOMAIN/
+TUNA_API_KEY из env.ts app'а и кладёт их в process.env до старта tuna-start:
+  "dev:tuna": "workspace-env --watch -- tuna-start -- pnpm run dev"
+--watch здесь — у ВНЕШНЕГО workspace-env: при правке .env он перезапускает всё
+дерево (и туннель с новым TUNA_DOMAIN, и dev-команду). Если у самой dev-команды
+тоже есть свой workspace-env --watch — он сам отключится, второго watcher'а не
+будет.
+
+Обёрнутая команда получает в свой env __TUNA_START__=1 — по этому флагу
+Vite-плагин @packages/tuna/vite узнаёт, что нужно патчить
+server.allowedHosts/server.hmr/preview.allowedHosts под туннель. Двойное
+подчёркивание с обеих сторон — та же конвенция "зарезервировано инструментом",
+что у __WORKSPACE_ENV__ в @tools/workspace-env: голое TUNA_START слишком
+похоже на имя, которое кто-то мог бы дать своей переменной.
+`;
+
+function parseArgv(argv) {
+  const dashIndex = argv.indexOf('--');
+  const flagArgs = dashIndex === -1 ? argv : argv.slice(0, dashIndex);
+  const command = dashIndex === -1 ? null : argv.slice(dashIndex + 1);
+
+  // -h/--help — только среди СВОИХ флагов (до "--"): "-- <команда> --help"
+  // должен долетать до обёрнутой команды как есть, не перехватываться тут.
+  if (flagArgs.includes('-h') || flagArgs.includes('--help')) {
+    console.log(HELP_TEXT);
+    process.exit(0);
+  }
+
+  const out = { target: null, command };
+  for (let i = 0; i < flagArgs.length; i++) {
+    if (flagArgs[i] === '--target') {
+      out.target = flagArgs[++i];
+      continue;
+    }
+    console.error(`tuna-start: неизвестный флаг "${flagArgs[i]}" (см. tuna-start --help)`);
+    process.exit(1);
+  }
+  if (command && command.length === 0) {
+    console.error('tuna-start: после "--" ожидается команда');
+    process.exit(1);
+  }
+  return out;
+}
+
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`tuna-start: переменная окружения ${name} не задана`);
+    process.exit(1);
+  }
+  return value;
+}
+
+/** Подставляет {ИМЯ} → process.env.ИМЯ для каждого плейсхолдера в строке. */
+function resolveTemplate(template) {
+  return template.replace(/\{(\w+)\}/g, (_match, name) => requireEnv(name));
+}
+
+/** Ждёт, пока порт начнёт принимать TCP-соединения (poll, не одна попытка). */
+function waitForPort(port, host, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+
+    function attempt() {
+      const socket = net.connect({ port, host, timeout: 1000 });
+      const onFail = () => {
+        socket.destroy();
+        if (Date.now() >= deadline) {
+          reject(new Error(`порт ${port} на ${host} не открылся за ${timeoutMs}мс`));
+        } else {
+          setTimeout(attempt, 300);
+        }
+      };
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve();
+      });
+      socket.once('error', onFail);
+      socket.once('timeout', onFail);
+    }
+
+    attempt();
+  });
+}
+
+/**
+ * Один HTTPS-запрос с коротким таймаутом: получилось — там https (сертификат
+ * не проверяем, rejectUnauthorized: false — mkcert-сертификаты локальные,
+ * самоподписанные, доверие не важно, важен только факт TLS-рукопожатия).
+ * Не получилось (TLS не поднялся/сервер не понял ClientHello) — там http.
+ */
+function probeHttps(port, host, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = https.request(
+      { host, port, method: 'HEAD', path: '/', rejectUnauthorized: false, timeout: timeoutMs },
+      () => {
+        req.destroy();
+        resolve(true);
+      },
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+async function detectTarget() {
+  const port = requireEnv('PORT');
+  const host = 'localhost';
+
+  try {
+    await waitForPort(port, host, 60_000);
+  } catch (err) {
+    console.error(`tuna-start: ${err.message}`);
+    process.exit(1);
+  }
+
+  const isHttps = await probeHttps(port, host, 2000);
+  return `${isHttps ? 'https' : 'http'}://${host}:${port}`;
+}
+
+async function main() {
+  const { target, command } = parseArgv(process.argv.slice(2));
+
+  const domain = requireEnv('TUNA_DOMAIN');
+  const apiKey = process.env.TUNA_API_KEY;
+
+  /** @type {import('child_process').ChildProcess[]} */
+  const children = [];
+  let shuttingDown = false;
+
+  function shutdown(code) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    let pending = children.length;
+    if (pending === 0) {
+      process.exit(code);
+      return;
+    }
+    for (const child of children) {
+      // Колбэк вызывается и на ошибке (например, процесс уже мёртв) — это
+      // ожидаемо, не повод не завершать остальных/не выйти самим.
+      treeKill(child.pid, () => {
+        pending -= 1;
+        if (pending === 0) process.exit(code);
+      });
+    }
+  }
+
+  function spawnChild(label, cmd, args, extraEnv) {
+    const proc = crossSpawn(cmd, args, {
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
+    proc.on('error', (err) => {
+      console.error(`tuna-start: не удалось запустить "${label}": ${err.message}`);
+      shutdown(1);
+    });
+    proc.on('exit', (code, signal) => {
+      shutdown(code ?? (signal ? 1 : 0));
+    });
+    children.push(proc);
+    return proc;
+  }
+
+  process.on('SIGINT', () => shutdown(0));
+  process.on('SIGTERM', () => shutdown(0));
+
+  // Дев-команду спавним ДО определения цели — иначе автодетекту нечего
+  // ждать (порт откроет именно она). При явном --target порядок роли не
+  // играет, но простоты ради он тот же в обоих случаях.
+  if (command) {
+    const [cmd, ...cmdArgs] = command;
+    spawnChild(cmd, cmd, cmdArgs, { __TUNA_START__: '1' });
+  }
+
+  const targetUrl = target ? resolveTemplate(target) : await detectTarget();
+  if (shuttingDown) return; // дев-команда уже упала, пока мы детектили
+
+  const tunaArgs = ['http', targetUrl, `--domain=${domain}`];
+  if (apiKey) tunaArgs.push(`--token=${apiKey}`);
+  spawnChild('tuna', 'tuna', tunaArgs);
+}
+
+main();

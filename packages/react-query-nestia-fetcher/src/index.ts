@@ -1,1 +1,0 @@
-export { createApiHooks } from "./wrapper"

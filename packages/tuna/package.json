@@ -1,0 +1,23 @@
+{
+  "name": "@packages/tuna",
+  "version": "1.0.0",
+  "private": true,
+  "exports": {
+    "./vite-plugin": "./src/vite-plugin.ts"
+  },
+  "bin": {
+    "tuna-start": "./bin/tuna-start.js"
+  },
+  "dependencies": {
+    "cross-spawn": "^7.0.6",
+    "tree-kill": "^1.2.2"
+  },
+  "peerDependencies": {
+    "vite": "*"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  }
+}
