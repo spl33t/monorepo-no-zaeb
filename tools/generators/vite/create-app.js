@@ -27,9 +27,9 @@ function createViteApp(appDir, name, framework, port = '5173') {
     type: 'module',
     monorepo: { kind: 'vite' },
     scripts: {
-      dev: 'workspace-env --debug --watch vite',
+      dev: 'workspace-env --debug --watch -- vite',
       build: 'tsc && vite build',
-      preview: 'workspace-env vite preview',
+      preview: 'workspace-env -- vite preview',
     },
     dependencies:
       framework === 'react'
@@ -84,6 +84,16 @@ function createViteApp(appDir, name, framework, port = '5173') {
         // см. @tools/workspace-env exports#browser) — остальные поля тихо
         // вернут .default() или бросят при отсутствии.
         '@env': ['./env.ts'],
+        // Общий для всех app'ов и пакетов env.ts в корне монорепы (см.
+        // tools/packages/workspace-env/README.md) — apps/<name> и
+        // packages/<name> на одной глубине от корня, поэтому и здесь, и в
+        // nest-генераторе один и тот же относительный путь '../../env.ts'.
+        // Отдельный алиас, а не то же самое '@env' — root-схема и локальная
+        // схема app'а это два разных модуля с непересекающимся набором
+        // полей. Из src/ то же VITE_*-ограничение, что и у '@env' выше —
+        // сам alias здесь только для тайпчека, реальный runtime-резолв в
+        // vite.config.ts#resolve.alias (см. vite-config.js).
+        '@monorepo': ['../../env.ts'],
       },
     },
     include: ['src', 'vite.config.ts'],

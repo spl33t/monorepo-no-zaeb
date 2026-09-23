@@ -35,6 +35,12 @@ export default defineConfig({
       // резолвится Vite'ом в browser-вариант @tools/workspace-env
       // (import.meta.env), не в process.env.
       '@env': path.resolve(process.cwd(), 'env.ts'),
+      // Общий root env.ts монорепы (см. tools/packages/workspace-env/README.md)
+      // — тот же путь '../../env.ts', что и в tsconfig.json#paths здесь и в
+      // nest-генераторе (apps/<name> и packages/<name> на одной глубине от
+      // корня). Vite не резолвит tsconfig paths в runtime сам — этот alias
+      // обязателен отдельно от tsconfig, как и '@env' выше.
+      '@monorepo': path.resolve(process.cwd(), '../../env.ts'),
     },
   },${plugins}
 });

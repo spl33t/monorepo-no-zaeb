@@ -35,13 +35,16 @@ const HELP_TEXT = `tuna-start — framework-agnostic лаунчер туннел
   TUNA_DOMAIN    обязательна всегда — публичный домен туннеля
   TUNA_API_KEY   опциональна — токен tuna, если аккаунт его требует
 
-Запускать нужно обёрнутым в workspace-env — он валидирует PORT/TUNA_DOMAIN/
-TUNA_API_KEY из env.ts app'а и кладёт их в process.env до старта tuna-start:
+tuna-start их только читает из process.env — не важно, чем они туда положены
+(shell-export, Docker env, любой другой .env-загрузчик). В этой монорепе для
+app'ов уже есть @tools/workspace-env, поэтому обычно удобнее обернуть
+tuna-start им — он провалидирует PORT/TUNA_DOMAIN/TUNA_API_KEY по env.ts app'а
+и положит их в process.env до старта tuna-start:
   "dev:tuna": "workspace-env --watch -- tuna-start -- pnpm run dev"
---watch здесь — у ВНЕШНЕГО workspace-env: при правке .env он перезапускает всё
-дерево (и туннель с новым TUNA_DOMAIN, и dev-команду). Если у самой dev-команды
-тоже есть свой workspace-env --watch — он сам отключится, второго watcher'а не
-будет.
+В такой связке --watch нужен ВНЕШНЕМУ workspace-env: при правке .env он
+перезапускает всё дерево (и туннель с новым TUNA_DOMAIN, и dev-команду). Если у
+самой dev-команды тоже есть свой workspace-env --watch — он сам отключится,
+второго watcher'а не будет.
 
 Обёрнутая команда получает в свой env __TUNA_START__=1 — по этому флагу
 Vite-плагин @packages/tuna/vite узнаёт, что нужно патчить

@@ -37,9 +37,9 @@ function createNestApp(appDir, name, port = '3000') {
       // --enable-source-maps — иначе стектрейсы указывают на dist/main.js
       // построчно, а не на реальный исходник (webpack.config.js уже пишет
       // .map, но сам Node должен явно их использовать).
-      dev: `workspace-env --debug --watch --set NODE_ENV=development --set NODE_OPTIONS=--enable-source-maps nest start --watch`,
+      dev: `workspace-env --debug --watch --set NODE_ENV=development --set NODE_OPTIONS=--enable-source-maps -- nest start --watch`,
       build: 'nest build',
-      start: `workspace-env --set NODE_ENV=production node --enable-source-maps ${entry}`,
+      start: `workspace-env --set NODE_ENV=production -- node --enable-source-maps ${entry}`,
       'nestia:sdk': 'nestia sdk --project tsconfig.json',
       prepare: 'ts-patch install',
     },

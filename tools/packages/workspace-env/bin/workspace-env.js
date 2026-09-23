@@ -18,9 +18,40 @@ const { require: tsxRequire } = require('tsx/cjs/api');
 
 const ENV_FILE_NAME = '.env';
 const ENV_DECLARATION_NAME = 'env.ts';
+const WORKSPACE_MARKER = 'pnpm-workspace.yaml';
+// Метка записи root в collected/сообщениях об ошибках. Фиксированная строка,
+// а не path.basename(workspaceRoot) — имя папки репозитория у разных клонов
+// разное, а сообщение об ошибке про root должно читаться одинаково везде.
+const ROOT_FOLDER_LABEL = '<root>';
 
 /**
- * Контракт `.env` / `env.ts` для одной директории (app или пакет). Имя
+ * Находит корень pnpm-воркспейса подъёмом от `startDir` вверх до первой
+ * директории с `pnpm-workspace.yaml`. Не через фиксированную глубину от
+ * `__dirname` (хотя `@tools/workspace-env` сам физически лежит по известному
+ * пути относительно корня) — так резолвер не завязан на то, где именно
+ * физически лежит сам пакет `@tools/workspace-env`, а только на реальный
+ * маркер монорепы, который и так должен существовать (иначе pnpm не собрал
+ * бы воркспейс, из которого этот скрипт вообще запущен).
+ *
+ * Бросает, а не возвращает `null` при недостижении: если маркер не найден до
+ * корня файловой системы — это не гонка (как с pnpm install в runCycle), а
+ * поломанная среда запуска.
+ */
+function findWorkspaceRoot(startDir) {
+  let dir = startDir;
+  while (true) {
+    if (existsSync(path.join(dir, WORKSPACE_MARKER))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error(`workspace-env: не найден ${WORKSPACE_MARKER} ни в одной директории выше "${startDir}"`);
+    }
+    dir = parent;
+  }
+}
+
+/**
+ * Контракт `.env` / `env.ts` для одной директории (app, пакет или корень
+ * воркспейса). Имя
  * `env.ts`, а не `.env.ts` — специально: голый импорт `./.env` в webpack
  * резолвится в первую очередь на реальный файл `.env` (точное совпадение
  * имени побеждает раньше, чем резолвер попробует добавить `.ts`), так что
@@ -155,9 +186,61 @@ function exitCodeFor(status, signal) {
   return status ?? (signal ? 1 : 0);
 }
 
-// Флаги — только в начале, до самой команды: иначе не отличить от флагов
-// дочерней команды (например `--watch` у nest start).
-//   workspace-env --debug --watch --set NODE_ENV=development nest start --watch
+// Ведущие/замыкающие двойные подчёркивания — распространённая в экосистеме
+// конвенция для "зарезервировано инструментом, руками не задавать" (в духе
+// __NEXT_*, __webpack_require__ и т.п.), а не просто префикс с именем
+// инструмента: голое `WORKSPACE_ENV` слишком похоже на естественное имя,
+// которое кто-то мог бы дать СВОЕЙ переменной (например "в каком окружении
+// сейчас воркспейс" — staging/prod). Двойное подчёркивание с обеих сторон
+// практически никогда не встречается в .env, заданных руками.
+const RUN_MARKER_NAME = '__WORKSPACE_ENV__';
+// {KEY: value} того, что этот процесс сам подставил из .env-файлов — чтобы
+// ВЛОЖЕННЫЙ workspace-env ниже по цепочке (любая обёртка вокруг dev-команды,
+// сама обёрнутая в workspace-env: `workspace-env -- <обёртка> -- pnpm run
+// dev`, где `dev` сам зовёт `workspace-env --watch -- vite`) не принял это за
+// реальный env, который .env не перезаписывает, и мог обновить эти значения
+// при своём --watch. Та же конвенция имени, что у RUN_MARKER_NAME.
+const INJECTED_ENV_NAME = '__WORKSPACE_ENV_INJECTED__';
+// JSON-массив realpath'ов app'ов, за чьим .env/env.ts УЖЕ следит какой-то
+// внешний `workspace-env --watch` — чтобы вложенный экземпляр для того же
+// app'а не заводил второго watcher'а: обе цепочки реагируют на одну и ту же
+// правку, внешний убивает всё дерево (включая вложенный экземпляр и его
+// команду), а вложенный в это же время пытается перезапустить только свою —
+// два независимых триггера рестарта одного и того же процесса, та же гонка,
+// из-за которой в webpack.config.js нет отдельного WatchEnvFilePlugin (см.
+// runWatchMode). Список, а не одно значение: вложенный экземпляр ДРУГОГО app'а
+// со своим --watch остаётся в силе и дописывает в него свой app.
+const WATCH_COVERAGE_NAME = '__WORKSPACE_ENV_WATCHING__';
+
+/**
+ * Читает и сразу удаляет из `process.env` служебную переменную с JSON внутри
+ * (проводка между экземплярами этого пакета — дальше по цепочке её видеть не
+ * должна ни одна команда). `undefined`, если её нет.
+ */
+function takeInternalJson(name) {
+  const raw = process.env[name];
+  if (raw === undefined) return undefined;
+  delete process.env[name];
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error(`workspace-env: не удалось разобрать ${name}: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// Флаги — только в начале, до обязательного разделителя `--`, за которым
+// идёт сама команда:
+//   workspace-env --debug --watch --set NODE_ENV=development -- nest start --watch
+//
+// `--` не опционален (в отличие от, скажем, `npm run <script> -- <args>`, где
+// без `--` скрипт просто не получит доп.аргументы, но и не упадёт) — без явной
+// границы позиционный разбор («первый нефлаговый токен и есть команда»)
+// держится только на счастливом совпадении, что имя команды никогда не
+// совпадёт с именем будущего флага workspace-env — конвенция того же
+// семейства инструментов (dotenv-cli: `dotenv -e .env -- npm test`, nodemon:
+// `nodemon --watch src -- --port 3000`), причём именно как ОБЯЗАТЕЛЬНОЕ
+// требование, а не line-style.
 //
 // --set KEY=value (повторяемый) — разовый ad-hoc оверрайд process.env для
 // ЭТОГО конкретного запуска, в духе cross-env (которого раньше приходилось
@@ -196,9 +279,40 @@ while (true) {
   }
   break;
 }
+if (cliArgs[0] !== '--') {
+  console.error(
+    `workspace-env: перед командой нужен явный разделитель "--", например:\n  workspace-env --watch -- nest start --watch\nПолучено: ${cliArgs.join(' ') || '(ничего)'}`,
+  );
+  process.exit(1);
+}
+cliArgs = cliArgs.slice(1);
+if (cliArgs.length === 0) {
+  console.error('workspace-env: после "--" нужно указать команду');
+  process.exit(1);
+}
+// Вложенный запуск: то, что подставил внешний workspace-env из .env, для этого
+// экземпляра — не "реальный" env (которого .env не перезаписывает, см.
+// runCycle ниже), а такой же результат чтения файлов, как и его собственный.
+// Поэтому снимаем эти ключи и даём циклу ниже подставить их заново по
+// обычным правилам — иначе первый же --watch-рестарт покажет старые значения
+// вместо правки в .env. Только если значение всё ещё ровно то, что записал
+// внешний (кто-то по дороге переопределил — значит, это уже реальный env, не
+// трогаем). ДО применения --set: он всегда выигрывает и не должен быть снят,
+// даже если случайно совпал по значению с тем, что записал внешний.
+const inheritedInjected = takeInternalJson(INJECTED_ENV_NAME) ?? {};
+for (const [key, value] of Object.entries(inheritedInjected)) {
+  if (process.env[key] === value) delete process.env[key];
+}
 for (const [key, value] of setOverrides) {
   process.env[key] = value;
 }
+// Ставится ПОСЛЕ --set (а не до) — это не пользовательская настройка, а факт
+// о самом процессе запуска, который должен оставаться достоверным независимо
+// от того, что передали через --set. По той же причине runCycle() ниже его
+// не трогает вообще: не через .env/env.ts-контракт, не через
+// collected/injectedKeys — просто process.env, которого никто не может
+// случайно перезаписать в свою пользу раньше нас.
+process.env[RUN_MARKER_NAME] = '1';
 
 // cwd, а не __dirname: этот файл вызывается через bin-симлинк из
 // node_modules/.bin/workspace-env, физически лежит внутри пакета
@@ -206,6 +320,35 @@ for (const [key, value] of setOverrides) {
 // scripts с cwd = директория того package.json, чей скрипт выполняется — то
 // есть корень вызывающего app'а (что локально, что в Docker с его WORKDIR).
 const appRoot = process.cwd();
+// Вычисляется один раз на весь процесс (не внутри runCycle) — корень
+// воркспейса не может измениться между циклами --watch, только сам
+// appRoot-относительный набор .env/env.ts может.
+let workspaceRoot;
+try {
+  workspaceRoot = findWorkspaceRoot(appRoot);
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
+
+// Вложенный запуск того же app'а — см. WATCH_COVERAGE_NAME. Ставится
+// безусловно после разбора (а не только при --watch): экземпляр без --watch
+// внутри watching-цепочки обязан пропустить пометку дальше по цепочке, иначе
+// третий уровень не узнает, что app уже покрыт.
+const watchCoverage = takeInternalJson(WATCH_COVERAGE_NAME) ?? [];
+const appRootReal = realpathSync(appRoot);
+if (watchMode && watchCoverage.includes(appRootReal)) {
+  watchMode = false;
+  console.log(
+    'workspace-env: --watch пропущен — за .env/env.ts этого app\'а уже следит внешний workspace-env --watch (он перезапустит всё дерево целиком, включая эту команду)',
+  );
+} else if (watchMode) {
+  watchCoverage.push(appRootReal);
+}
+if (watchCoverage.length > 0) {
+  process.env[WATCH_COVERAGE_NAME] = JSON.stringify(watchCoverage);
+}
+
 // define-env.ts напрямую, не через index.ts — package.json#exports тоже
 // резолвит node-вариант прямо сюда (см. define-env.ts про самодостаточность
 // без внутренних relative-импортов).
@@ -225,10 +368,13 @@ const injectedKeys = new Set();
  * вызывающий код сам решает: при первом прогоне упасть совсем, при повторном
  * (в `--watch`) — просто не перезапускать дочерний процесс с плохим `.env`.
  *
- * `packageDirs` — app root + директория каждого найденного пакета
- * (включая те, что сейчас без `.env`/`env.ts` вовсе) — источник для
+ * `packageDirs` — app root, root воркспейса и директория каждого найденного
+ * пакета (включая те, что сейчас без `.env`/`env.ts` вовсе) — источник для
  * `setupWatcher`, чтобы заметить появление/удаление самих этих файлов, а не
- * только правку уже существующих.
+ * только правку уже существующих. Root включён всегда, даже когда у него
+ * самого сейчас нет ни `.env`, ни `env.ts` — по той же причине (появление
+ * файлов позже, во время `--watch`, некому будет заметить, если директория не
+ * под наблюдением с самого начала).
  */
 function runCycle() {
   const visited = new Set();
@@ -240,7 +386,7 @@ function runCycle() {
   // один раз) — так cycleResult корректен и в catch-ветке, где visited может
   // быть заполнен лишь частично (обход прервался на середине).
   function cycleResult(ok) {
-    return { ok, collected, scopeDirs, packageDirs: [appRoot, ...visited] };
+    return { ok, collected, scopeDirs, packageDirs: [appRoot, workspaceRoot, ...visited] };
   }
   function fail(message) {
     console.error(message);
@@ -249,6 +395,13 @@ function runCycle() {
 
   try {
     addEntryIfNeeded(path.basename(appRoot), appRoot, collected, structureErrors);
+    // Общий для всех app'ов и пакетов root — та же проверка контракта
+    // (.env без env.ts — ошибка) и та же коллизия имён, что и у обычной
+    // записи. Пропускаем, только если сама цель запуска и есть корень
+    // монорепы — иначе одна и та же директория попала бы в collected дважды.
+    if (workspaceRoot !== appRoot) {
+      addEntryIfNeeded(ROOT_FOLDER_LABEL, workspaceRoot, collected, structureErrors);
+    }
     collectPackageEnvs(appRoot, visited, collected, structureErrors, scopeDirs);
   } catch (e) {
     // node_modules/@packages может быть застигнут в промежуточном состоянии
@@ -334,6 +487,17 @@ function runCycle() {
   if (debugMode) {
     console.log('workspace-env: итоговые переменные окружения');
     printTableGroups(tableGroups);
+  }
+
+  // Только после успешной валидации и заново на КАЖДЫЙ цикл (в --watch
+  // дочерний процесс перезапускается с process.env уже этого цикла) — см.
+  // INJECTED_ENV_NAME. Пусто — не оставляем пустую служебную переменную.
+  if (injectedKeys.size > 0) {
+    process.env[INJECTED_ENV_NAME] = JSON.stringify(
+      Object.fromEntries([...injectedKeys].map((key) => [key, process.env[key]])),
+    );
+  } else {
+    delete process.env[INJECTED_ENV_NAME];
   }
 
   return cycleResult(true);
