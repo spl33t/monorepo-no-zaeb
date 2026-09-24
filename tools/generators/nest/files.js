@@ -164,12 +164,14 @@ const MODULES: { name: string; module: () => Promise<Type<any>> }[] = [
 console.log(
   \`\n📦 nestia sdk load \${MODULES.length} entry point\${MODULES.length === 1 ? '' : 's'}\`,
 );
+function subpathOf(name: string): string {
+  return name === 'index' ? 'index.ts' : \`\${name}/index.ts\`;
+}
+
 let count = 0;
 for (const { name, module } of MODULES) {
-  count + 1;
-  console.log(
-    \`\${count}. \${name} (\${module.name}) → packages/src/\${name === 'index' ? 'index.ts' : name + '/index.ts'}\`,
-  );
+  count += 1;
+  console.log(\`\${count}. \${name} (\${module.name}) → packages/\${PACKAGE_NAME}/src/\${subpathOf(name)}\`);
 }
 
 // @nestia/sdk сам никогда не удаляет файлы в output — только дописывает и
