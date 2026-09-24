@@ -1,3 +1,16 @@
+// Этот файл — не часть чьего-то app-tsconfig (у него нет своего "родного"
+// tsconfig.json, он резолвится ТРАНЗИТИВНО через package.json#exports у
+// того, кто импортирует @env/@packages/*/@monorepo) — поэтому не может
+// рассчитывать на apps/<name>/tsconfig.json#types: ["vite/client"], который
+// даёт ambient ImportMeta.env там. Открытый отдельно (или ещё не
+// импортированный ни одним app'ом) — orphan-файл с TS-дефолтами, без единого
+// ambient-типа для import.meta.env (TS2339, проверено живьём). Тот же
+// инструмент, что и /// <reference lib="dom" /> для .tsx-пакетов (см.
+// tools/packages/workspace-env/README.md/SKILL.md) — точечно на уровне
+// файла, а не глобальный tsconfig-флаг. vite — devDependency этого пакета
+// только ради этого ambient-типа, в рантайме не импортируется.
+/// <reference types="vite/client" />
+
 import { z } from 'zod';
 
 /**
@@ -16,6 +29,18 @@ export const ENV_SCHEMA: unique symbol = Symbol('workspace-env.schema');
 
 export type EnvShapeBuilder<Shape extends z.ZodRawShape> = (zod: typeof z) => Shape;
 
+// Ключи РЕЗУЛЬТАТА (не Shape) с префиксом VITE_ — то же ограничение, что Vite
+// сам накладывает на `import.meta.env`. Именно от инферренного Result, а не
+// от Shape: `keyof Shape` и `keyof z.infer<z.ZodObject<Shape>>` для zod v4 —
+// два структурно разных (хоть и рантайм-эквивалентных) типа из-за внутренней
+// obj/optional-развёртки инфер-машинерии zod, `Extract` от Shape не
+// присваивается обратно в `Pick<z.infer<...>, ...>` (проверено тайпчеком).
+// Вычислено template literal type'ом, а не просто документировано в
+// комментарии — обращение к server-only полю (например `SENTRY_DSN` в root
+// `env.ts`) из браузерного кода становится ошибкой ТАЙПЧЕКА (поля просто нет
+// в типе), а не рантайм-сюрпризом при первом обращении к чему угодно.
+type ViteKeys<Result> = Extract<keyof Result, `VITE_${string}`>;
+
 /**
  * Browser-вариант — источник значений `import.meta.env` (Vite сам грузит
  * `.env`/реальные переменные окружения и подставляет их сюда как настоящий
@@ -24,9 +49,20 @@ export type EnvShapeBuilder<Shape extends z.ZodRawShape> = (zod: typeof z) => Sh
  * клиентского кода (Vite/esbuild по умолчанию для браузерных сборок).
  *
  * Только переменные с префиксом `VITE_` (или настроенным `envPrefix`) реально
- * видны в `import.meta.env` — это ограничение самого Vite, не этого файла:
- * непрефиксованные `.env`-переменные (например серверный `PORT`) сюда не
- * попадают вообще, см. tools/packages/workspace-env/README.md.
+ * видны в `import.meta.env` — это ограничение самого Vite, не этого файла.
+ * Поэтому схема сужается до VITE_*-подмножества (`fullSchema.pick(...)`) ДО
+ * валидации, а не валидируется целиком с расчётом на `.default()` у
+ * остальных полей: `z.object.safeParse` — это один разбор всей схемы разом,
+ * так что одно required server-only поле без дефолта (например `SENTRY_DSN`
+ * в root `env.ts`, доступном отовсюду через `@monorepo`) роняло бы парсинг
+ * ЦЕЛИКОМ, а с ним — доступ ко ВСЕМ полям сразу, включая те, что реально есть
+ * в `import.meta.env` (проверено живьём на zod). "Вылечить" это дефолтом
+ * нельзя — дефолт ослабил бы обязательность поля и на Node-стороне тоже (там
+ * та же декларация используется `define-env.ts`, где эта переменная как раз
+ * обязана быть заполнена по-настоящему). Правильный ответ — не валидировать
+ * server-only поля в браузерном контексте вообще: для браузера их как будто
+ * не существует, ровно как и в реальности (Vite их в `import.meta.env` не
+ * кладёт).
  *
  * Инлайнит Proxy-логику целиком, а не импортирует из общего файла —
  * симметрично с node-вариантом (`define-env.ts`), которому это нужно по
@@ -40,9 +76,19 @@ export type EnvShapeBuilder<Shape extends z.ZodRawShape> = (zod: typeof z) => Sh
  */
 export function defineEnv<Shape extends z.ZodRawShape>(
   builder: EnvShapeBuilder<Shape>,
-): z.infer<z.ZodObject<Shape>> {
-  const schema = z.object(builder(z));
-  type Result = z.infer<typeof schema>;
+): Pick<z.infer<z.ZodObject<Shape>>, ViteKeys<z.infer<z.ZodObject<Shape>>>> {
+  const fullSchema = z.object(builder(z));
+  const viteKeys = Object.keys(fullSchema.shape).filter((key) => key.startsWith('VITE_'));
+  // Маска pick() строится из имён, известных только в рантайме (обычный
+  // filter по строке) — zod требует литеральные ключи Shape прямо в типе
+  // маски, что здесь принципиально невозможно выразить статически (сами
+  // VITE_-ключи не известны на этапе тайпчека, разные вызовы defineEnv дают
+  // разный Shape). Реальная корректность — за Result-типом функции
+  // (Pick<..., ViteKeys<...>> выше), он проверен отдельно; этот `as never`
+  // только снимает препятствие тайпчекера у самого вызова `.pick()`.
+  const mask = Object.fromEntries(viteKeys.map((key) => [key, true]));
+  const schema = fullSchema.pick(mask as never);
+  type Result = Pick<z.infer<z.ZodObject<Shape>>, ViteKeys<z.infer<z.ZodObject<Shape>>>>;
   let cached: Result | undefined;
 
   function resolve(): Result {
@@ -52,7 +98,7 @@ export function defineEnv<Shape extends z.ZodRawShape>(
       if (!parsed.success) {
         throw new Error(`Invalid environment variables:\n${z.prettifyError(parsed.error)}`);
       }
-      cached = parsed.data;
+      cached = parsed.data as Result;
     }
     return cached;
   }

@@ -93,10 +93,11 @@ function createViteApp(appDir, name, framework, port = '5173') {
       paths: {
         '@/*': ['./src/*'],
         // env.ts лежит рядом с package.json (вне src/) — алиас на конкретный
-        // файл, а не паттерн. Из src/ безопасен только для VITE_*-полей
-        // схемы (браузер резолвит их через import.meta.env, не process.env,
-        // см. @tools/workspace-env exports#browser) — остальные поля тихо
-        // вернут .default() или бросят при отсутствии.
+        // файл, а не паттерн. Из src/ виден только VITE_*-срез схемы (браузер
+        // резолвит через import.meta.env, не process.env, см.
+        // @tools/workspace-env exports#browser и define-env.browser.ts) —
+        // остальные поля в browser-варианте структурно отсутствуют в типе,
+        // обращение к ним — ошибка тайпчека, а не рантайм-сюрприз.
         '@env': ['./env.ts'],
         // Общий для всех app'ов и пакетов env.ts в корне монорепы (см.
         // tools/packages/workspace-env/README.md) — apps/<name> и
@@ -110,7 +111,19 @@ function createViteApp(appDir, name, framework, port = '5173') {
         '@monorepo': ['../../env.ts'],
       },
     },
-    include: ['src', 'vite.config.ts'],
+    // vite.config.ts НЕ включён: он грузится Node'ом напрямую (см. комментарий
+    // в vite-config.js), а customConditions: ['browser'] выше — на весь
+    // Program сразу, а не по файлам (per-file conditions в TS не бывает).
+    // Если включить vite.config.ts сюда же — tsc/tsserver резолвят его env
+    // через тот же browser-срез, что и src/ (VITE_*-only), и env.PORT там
+    // ложно подсвечивается ошибкой, хотя в рантайме vite.config.ts реально
+    // получает node-вариант (полную схему) и работает нормально. Без
+    // composite/references (для одного leaf-файла, который никто не
+    // потребляет как зависимость, оверкилл) — просто не тянуть его в этот
+    // Program: тайпчек vite.config.ts тогда идёт без project-конфига вообще
+    // (orphan-файл, дефолтные TS-conditions — то есть ровно то же самое
+    // "default", что использует и Node в рантайме, проверено живьём).
+    include: ['src'],
   };
   fs.writeFileSync(path.join(appDir, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2));
 
