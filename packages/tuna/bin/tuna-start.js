@@ -24,8 +24,11 @@ const HELP_TEXT = `tuna-start — framework-agnostic лаунчер туннел
   -h, --help             Показать эту справку и выйти.
 
 Автодетект цели (когда --target не передан):
-  1. Ждёт (до 60с), пока PORT начнёт принимать TCP-соединения — поэтому
-     обёрнутая команда (если есть) спавнится ДО детекта, а не после.
+  1. Ждёт, пока PORT начнёт принимать TCP-соединения — без ограничения по
+     времени (первые 60с молча, дальше раз в 10с предупреждение с числом
+     попыток в консоль, но не падает — холодный старт большого проекта может
+     занять больше минуты). Поэтому обёрнутая команда (если есть) спавнится
+     ДО детекта, а не после.
   2. Пробует HTTPS-запрос с коротким таймаутом: получилось — https://,
      не получилось — http://.
   Итог — http(s)://localhost:\${PORT}, без ручной настройки под фреймворк.
@@ -96,20 +99,40 @@ function resolveTemplate(template) {
   return template.replace(/\{(\w+)\}/g, (_match, name) => requireEnv(name));
 }
 
-/** Ждёт, пока порт начнёт принимать TCP-соединения (poll, не одна попытка). */
-function waitForPort(port, host, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeoutMs;
+// Без верхнего предела и без фиксированного числа, подбираемого руками под
+// конкретный app: холодный старт большого Nest-проекта (webpack + ts-patch/
+// typia-трансформы) на медленной машине может занять больше 60с — жёсткий
+// таймаут-провал там просто ломает dev-туннель без всякой пользы. Вместо
+// этого — первые PORT_WAIT_GRACE_MS ждём молча (обычный случай, порт
+// открывается быстро), а после — не падаем, а раз в
+// PORT_WAIT_WARN_INTERVAL_MS пишем предупреждение с числом попыток и
+// продолжаем ждать. Выйти из ожидания снаружи можно как обычно — Ctrl+C
+// (SIGINT, см. main()) или падение самой обёрнутой dev-команды (её 'exit'
+// зовёт shutdown() → process.exit(), который обрывает и этот цикл).
+const PORT_WAIT_GRACE_MS = 60_000;
+const PORT_WAIT_WARN_INTERVAL_MS = 10_000;
+const PORT_WAIT_POLL_MS = 300;
 
-    function attempt() {
+/** Ждёт, пока порт начнёт принимать TCP-соединения (poll, без таймаута). */
+function waitForPort(port, host) {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    let attempt = 0;
+    let lastWarnAt = 0;
+
+    function tryConnect() {
+      attempt += 1;
       const socket = net.connect({ port, host, timeout: 1000 });
       const onFail = () => {
         socket.destroy();
-        if (Date.now() >= deadline) {
-          reject(new Error(`порт ${port} на ${host} не открылся за ${timeoutMs}мс`));
-        } else {
-          setTimeout(attempt, 300);
+        const elapsed = Date.now() - startedAt;
+        if (elapsed >= PORT_WAIT_GRACE_MS && elapsed - lastWarnAt >= PORT_WAIT_WARN_INTERVAL_MS) {
+          lastWarnAt = elapsed;
+          console.warn(
+            `tuna-start: порт ${port} на ${host} всё ещё не открылся (${Math.round(elapsed / 1000)}с, попытка ${attempt}) — продолжаю ждать...`,
+          );
         }
+        setTimeout(tryConnect, PORT_WAIT_POLL_MS);
       };
       socket.once('connect', () => {
         socket.destroy();
@@ -119,7 +142,7 @@ function waitForPort(port, host, timeoutMs) {
       socket.once('timeout', onFail);
     }
 
-    attempt();
+    tryConnect();
   });
 }
 
@@ -151,12 +174,7 @@ async function detectTarget() {
   const port = requireEnv('PORT');
   const host = 'localhost';
 
-  try {
-    await waitForPort(port, host, 60_000);
-  } catch (err) {
-    console.error(`tuna-start: ${err.message}`);
-    process.exit(1);
-  }
+  await waitForPort(port, host);
 
   const isHttps = await probeHttps(port, host, 2000);
   return `${isHttps ? 'https' : 'http'}://${host}:${port}`;
